@@ -6,6 +6,7 @@ import { BookOpen, ScanFace, Users } from "lucide-react";
 import { PageBody, PageHeader } from "@/components/shell";
 import { Card, EmptyState, Pill, ProgressBar } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
+import { usableTemplates } from "@/lib/face/matcher";
 import { useT } from "@/lib/i18n/react";
 
 export default function TeacherClasses() {
@@ -24,7 +25,7 @@ export default function TeacherClasses() {
             {classes.map((c) => {
               const students = app.studentsOfClass(c.id);
               const consent = students.filter((s) => s.parentConsent).length;
-              const enrolled = students.filter((s) => s.parentConsent && s.faceTemplates.length > 0).length;
+              const enrolled = students.filter((s) => s.parentConsent && usableTemplates(s).length > 0).length;
               const subjects = app.subjectsOfTeacherInClass(me.id, c.id);
               return (
                 <Link key={c.id} href={`/teacher/classes/${c.id}`} className="group rounded-2xl border border-line bg-surface p-4 transition hover:border-primary/50">

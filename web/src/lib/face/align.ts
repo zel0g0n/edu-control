@@ -1,6 +1,6 @@
 import { invertAffine, sampleBilinear, type Affine, type Point, type RgbaImage } from "./image";
 
-/** ArcFace 112×112 standart nuqtalari (MobileFaceNet shunga o'rgatilgan). */
+/** ArcFace 112×112 standart nuqtalari (ArcFace oilasidagi modellar shunga o'rgatilgan). */
 export const ARCFACE_TEMPLATE: Point[] = [
   [38.2946, 51.6963],
   [73.5318, 51.5014],
@@ -31,12 +31,27 @@ export function similarityTransform(src: Point[], dst: Point[]): Affine {
 }
 
 /**
- * Yuzni 5 nuqta bo'yicha tekislab, MobileFaceNet kirishini yasaydi:
- * [1, 112, 112, 3], RGB, (x − 128) / 128.
+ * Yuzni 5 nuqta bo'yicha tekislab, yuz modeli kirishini yasaydi:
+ * [1, size, size, 3], RGB, (x − mean) / std. Ixtiyoriy: ko'zgu nusxasi
+ * (flip) va keskinlik (sifat) bahosi.
  */
-export function alignedFaceTensor(img: RgbaImage, kps: Point[], size = 112): Float32Array {
-  const inv = invertAffine(similarityTransform(kps, ARCFACE_TEMPLATE));
-  const out = new Float32Array(size * size * 3);
+export function alignedFaceTensor(img: RgbaImage, kps: Point[], size = 112, mean = 128, std = 128): Float32Array {
+  return alignFace(img, kps, size, mean, std).tensor;
+}
+
+export interface AlignedFace {
+  tensor: Float32Array;
+  /** Gorizontal ko'zgu nusxasi (flip): ikki namunaning yig'indisi barqarorroq. */
+  flipped: Float32Array;
+  /** Keskinlik: Laplas dispersiyasi (yulduzcha 0..~2000). Xira/uzoq yuzda past. */
+  sharpness: number;
+}
+
+export function alignFace(img: RgbaImage, kps: Point[], size = 112, mean = 128, std = 128): AlignedFace {
+  const inv = invertAffine(similarityTransform(kps, ARCFACE_TEMPLATE.map(([x, y]) => [x * size / 112, y * size / 112] as Point)));
+  const tensor = new Float32Array(size * size * 3);
+  const flipped = new Float32Array(size * size * 3);
+  const gray = new Float32Array(size * size);
   const px = [0, 0, 0];
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -44,12 +59,31 @@ export function alignedFaceTensor(img: RgbaImage, kps: Point[], size = 112): Flo
       const sy = inv[3] * x + inv[4] * y + inv[5];
       sampleBilinear(img, sx, sy, px);
       const o = (y * size + x) * 3;
-      out[o] = (px[0] - 128) / 128;
-      out[o + 1] = (px[1] - 128) / 128;
-      out[o + 2] = (px[2] - 128) / 128;
+      const f = (y * size + (size - 1 - x)) * 3;
+      for (let c = 0; c < 3; c++) {
+        const v = (px[c] - mean) / std;
+        tensor[o + c] = v;
+        flipped[f + c] = v;
+      }
+      gray[y * size + x] = 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2];
     }
   }
-  return out;
+  return { tensor, flipped, sharpness: laplacianVariance(gray, size) };
+}
+
+/** Yuzning markaziy qismida (ko'z-burun-og'iz) Laplas dispersiyasi. */
+export function laplacianVariance(gray: Float32Array, size: number): number {
+  const m = Math.round(size * 0.18);
+  let sum = 0, sum2 = 0, n = 0;
+  for (let y = m; y < size - m; y++) {
+    for (let x = m; x < size - m; x++) {
+      const i = y * size + x;
+      const l = gray[i - 1] + gray[i + 1] + gray[i - size] + gray[i + size] - 4 * gray[i];
+      sum += l; sum2 += l * l; n++;
+    }
+  }
+  const mu = sum / n;
+  return sum2 / n - mu * mu;
 }
 
 export function l2normalize(v: Float32Array | number[]): Float32Array {

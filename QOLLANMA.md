@@ -490,7 +490,7 @@ npm run build     # hammasi yig'iladimi
 | Telefondan ochilmaydi | Bitta Wi-Fi'dami, IP to'g'rimi, firewall qoidasi (5.1), Wi-Fi "Private" |
 | Telefonda CORS xatosi | `api\.env` dagi `WEB_ORIGIN` ga telefonda ochilgan manzilni aynan qo'shing (vergul bilan), API'ni qayta ishga tushiring |
 | Kamera ochilmaydi / qora ekran | Manzil https yoki localhost emas (5-bo'lim); brauzerda kamera ruxsati bloklangan (manzil yonidagi qulf belgisi → Ruxsatlar); kamera boshqa ilovada band |
-| Yuz modellari yuklanmadi | `web\public\models` da `yunet.onnx`, `mobilefacenet.onnx` borligini tekshiring; `npm run dev:web` ni qayta ishga tushiring (`ort` papkasini o'zi ko'chiradi) |
+| Yuz modellari yuklanmadi | `web\public\models` da `yunet.onnx`, `ghostfacenet-w13s1.onnx` borligini tekshiring; `npm run dev:web` ni qayta ishga tushiring (`ort` papkasini o'zi ko'chiradi) |
 | O'quvchi tanilmayapti | Yuz namunasi olinganmi va rozilik belgilanganmi; yorug'lik; yaqinroq yoki 2x zoom. Direktor: Sozlamalar → Yuz tanish → Diagnostika |
 | SMS kod kelmayapti | Sinov rejimida kod ekranda/1-terminalda. Eskiz kalitlari va balansini tekshiring |
 | `JWT_SECRET kamida 32 belgi bo'lishi kerak` | `NODE_ENV=production` da JWT_SECRET yarating (3.2) |

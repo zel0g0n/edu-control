@@ -115,15 +115,43 @@ Hozirgi tuzilma: bitta server = bitta merchant (har maktab o'z serveri yoki bitt
 - **Davomat hisoboti kuzatuv davomida** yig'iladi (kompyuter/planshetda yonida, telefonda kamera
   ostida): kim keldi va qachon, kim hali aniqlanmagan. Aniqlanmaganni ro'yxatdan "keldi" deb
   belgilash mumkin. "Yakunlash" → "Saqlash": qolganlar "kelmadi", kech aniqlanganlar "kechikdi".
-- Uzoqdagi yuz uchun bir necha kadr namunasi o'rtachalanadi va ko'proq tasdiq talab qilinadi.
-  Sinov (1920 kenglikdagi kadr, sinf simulyatsiyasi): ko'zlar orasi 13 px dan katta yuzlar
-  ishonchli tanildi, 11-12 px da ba'zan sariq (tasdiq so'raydi). Taxminan: 1080p kamera, 5-6 m
-  masofagacha ishonchli; kattaroq xonada 2x zoom bilan ikki qismda o'tkazing.
-- Hammasi qurilmaning o'zida: YuNet + MobileFaceNet. Video yozilmaydi; ota-onaga faqat o'z
-  farzandining yuz kesimi boradi. Yuz namunasi faqat ota-ona roziligi bilan olinadi.
+- Uzoqdagi yuz uchun bir necha kadr namunasi o'rtachalanadi (xira kadrlar kamroq ta'sir qiladi)
+  va ko'proq tasdiq talab qilinadi. Bir yuz bir vaqtda faqat bitta o'quvchiga biriktiriladi.
+- Hammasi qurilmaning o'zida: **YuNet** (yuz topish) + **GhostFaceNetV1 W1.3 S1** (ArcFace, 512 o'lcham,
+  MIT litsenziya, 16 MB, birinchi ochilishda yuklanib telefonda saqlanadi). Video yozilmaydi;
+  ota-onaga faqat o'z farzandining yuz kesimi boradi. Yuz namunasi faqat ota-ona roziligi bilan olinadi.
+- Ro'yxatga olish: old, chap, o'ng holatlarning har biri 3 ta keskin kadr o'rtachasi; xira kadr olinmaydi.
+
+- **Demo video:** demo rejimda kamera sahifasidagi "Demo videoda ko'rish" tugmasi sinf videosini ochadi
+  (sun'iy yuzlar, `web/public/demo/`, SFHQ MIT). Namunalar faqat shu oynada ishlatiladi, ma'lumotlar o'zgarmaydi.
+
+### Aniqlik o'lchovi (LFW, 6000 juft yuz; uzoqdagi yuz kichraytirib taqlid qilingan)
+
+| Ko'zlar orasi | Avvalgi (MobileFaceNet) | Hozirgi (GhostFaceNet S1) |
+|---|---|---|
+| 35 px (yaqin) | 98.6 % | **99.6 %** |
+| 20 px | 97.9 % | **99.4 %** |
+| 14 px | 97.3 % | **98.9 %** |
+| 10 px (orqa parta) | 88.2 % | **97.9 %** |
+
+Ko'rsatkich: begona odamni "u" deb qabul qilish 0.1 % bo'lganda to'g'ri tanish ulushi (TAR@FAR=0.1%), bitta kadr.
+"30 o'quvchili sinf + 10 begona" simulyatsiyasida (bitta kadr): 35/20/14/10 px da 99.2/99.3/98.8/96.8 % tanildi,
+boshqa o'quvchi deb adashish 0 %. Brauzerdagi sinf sahnasi (1920 px, 640 bo'laklar): ko'zlar orasi 13 px dan
+yuqori yuzlar bitta kadrda 5/5, 11 px da 4/5; jonli kuzatuvda 5 o'quvchi 5 soniyada tanildi
+(avval eng uzoqdagisi 25 soniya). Yuz namunasi 1 ta yuz uchun ~45 ms (kompyuter, WASM 1 oqim).
+
+Muhim: bu kattalar suratlari. Bolalar, aka-uka va egizaklar uchun haqiqiy sinfda tekshirib,
+**Sozlamalar → Yuz tanish → Diagnostika** tavsiyasini qo'llang. Model almashganda eski namunalar
+ishlatilmaydi: ro'yxatda "Qayta olish kerak" deb ko'rinadi.
+
 - Chegaralar muassasa sozlamalarida, "Diagnostika" o'z o'quvchilaringiz namunalari bo'yicha tavsiya beradi.
 - Jonlilik tekshiruvi: kameraga yaqin yuz qimirlamasa (rasm, telefon ekrani) avtomatik
   "keldi" bo'lmaydi. Uzoqdagi kichik yuzlarda ishlamaydi (aniqlik yetmaydi), ekrandagi videoni ajratmaydi.
+
+## NVR integratsiyasi (ixtiyoriy)
+
+Sinf xonalaridagi kameralar tizimi (NVR loyihasi) dars davomatini o'zi olib, API orqali yuborishi mumkin.
+Direktor: **Sozlamalar → NVR integratsiyasi → Kalit yaratish**. To'liq hujjat: [INTEGRATSIYA.md](INTEGRATSIYA.md).
 
 ## Tekshirish
 

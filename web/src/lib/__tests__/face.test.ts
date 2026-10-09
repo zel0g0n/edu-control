@@ -190,7 +190,7 @@ describe("chegaralar diagnostikasi", () => {
     const d = faceDiagnostics(people);
     expect(d.students).toBe(6);
     expect(d.maxImpostor).toBeGreaterThan(0.75);
-    expect(d.suggested!.match).toBe(0.75);
+    expect(d.suggested!.match).toBe(0.7);
     expect(d.suggested!.review).toBeLessThan(d.suggested!.match);
   });
 });
@@ -256,11 +256,11 @@ describe("kadrlar bo'yicha o'rtacha namuna", () => {
 describe("kichik yuz uchun yumshoq chegara", () => {
   it("past o'xshashlik faqat katta farq bilan qabul qilinadi", () => {
     const g = new FaceGallery({ a: [withSim(1)], b: [unit([0, 0, 1, 0])] });
-    // a bilan 0.50, b bilan 0: oddiy rejimda "tekshiring", yumshoqda "tanildi"
-    expect(g.match(withSim(0.5)).level).toBe("review");
-    expect(g.match(withSim(0.5), new Set(), true).level).toBe("confident");
+    // a bilan 0.38, b bilan 0: oddiy rejimda "tekshiring", yumshoqda "tanildi"
+    expect(g.match(withSim(0.38)).level).toBe("review");
+    expect(g.match(withSim(0.38), new Set(), true).level).toBe("confident");
     // ikkinchi nomzod yaqin bo'lsa: yumshoq rejimda ham yo'q
-    const close = unit([0.5, 0.2, 0.4, 0]);
+    const close = unit([0.5, 0.2, 0.45, 0]);
     const r = g.match(close, new Set(), true);
     expect(r.level).not.toBe("confident");
   });

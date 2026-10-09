@@ -38,13 +38,19 @@ export const CameraStage = forwardRef<CameraStageHandle, {
   /** Ekrandagi qatlam (yuz doiralari). */
   children?: React.ReactNode;
   className?: string;
-}>(function CameraStage({ facing: initialFacing = "environment", fit = "cover", onZoom, children, className }, ref) {
+  /** To'liq ekranda ustidagi sarlavha/pastdagi panel uchun tugmalar joyi (CSS qiymat). */
+  controlsTop?: string;
+  zoomBottom?: string;
+  /** Kamera o'rniga video fayl (demo/sinov): takrorlanib o'ynaydi. */
+  videoSrc?: string;
+}>(function CameraStage({ facing: initialFacing = "environment", fit = "cover", onZoom, children, className, controlsTop, zoomBottom, videoSrc }, ref) {
   const box = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const canvases = useRef<HTMLCanvasElement[]>([]);
   const turn = useRef(0);
   const [facing, setFacing] = useState(initialFacing);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [fileReady, setFileReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [vsize, setVsize] = useState({ w: 0, h: 0 });
@@ -59,6 +65,7 @@ export const CameraStage = forwardRef<CameraStageHandle, {
 
   // Kamerani ochish / yopish.
   useEffect(() => {
+    if (videoSrc) return; // video fayl: kamera ochilmaydi
     let cancelled = false;
     let s: MediaStream | null = null;
     (async () => {
@@ -100,7 +107,36 @@ export const CameraStage = forwardRef<CameraStageHandle, {
       s?.getTracks().forEach((t) => t.stop());
       setStream(null);
     };
-  }, [facing]);
+  }, [facing, videoSrc]);
+
+  // Video fayl manbasi
+  useEffect(() => {
+    const v = video.current;
+    if (!v || !videoSrc) return;
+    setError(null);
+    setRange({ min: 1, max: 4, hw: false });
+    setZoom(1);
+    setTorch(null);
+    v.srcObject = null;
+    v.src = videoSrc;
+    v.loop = true;
+    const onMeta = () => {
+      setVsize({ w: v.videoWidth, h: v.videoHeight });
+      setFileReady(true);
+    };
+    const onErr = () => setError(t("Videoni ochib bo'lmadi."));
+    v.addEventListener("loadedmetadata", onMeta);
+    v.addEventListener("error", onErr);
+    v.play().catch(() => {});
+    return () => {
+      v.removeEventListener("loadedmetadata", onMeta);
+      v.removeEventListener("error", onErr);
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+      setFileReady(false);
+    };
+  }, [videoSrc]);
 
   useEffect(() => {
     const v = video.current;
@@ -130,7 +166,7 @@ export const CameraStage = forwardRef<CameraStageHandle, {
   const s = base * digital;
   const left = (size.w - vsize.w * s) / 2;
   const top = (size.h - vsize.h * s) / 2;
-  const mirror = facing === "user";
+  const mirror = !videoSrc && facing === "user";
 
   const applyZoom = useCallback(async (z: number) => {
     const v = Math.min(range.max, Math.max(range.min, z));
@@ -262,7 +298,7 @@ export const CameraStage = forwardRef<CameraStageHandle, {
           <p>{error}</p>
         </div>
       )}
-      {!error && !stream && (
+      {!error && !stream && !fileReady && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="size-8 animate-spin rounded-full border-3 border-white border-t-transparent" />
         </div>
@@ -275,11 +311,13 @@ export const CameraStage = forwardRef<CameraStageHandle, {
           style={{ left: focus.x, top: focus.y }}
         />
       )}
-      <div className="absolute top-3 right-3 flex flex-col gap-2.5">
-        <button type="button" aria-label={t("Kamerani almashtirish")} onClick={() => setFacing(facing === "user" ? "environment" : "user")}
-          className="flex size-11 items-center justify-center rounded-full bg-black/50 text-white">
-          <SwitchCamera size={20} />
-        </button>
+      <div className="absolute top-3 right-3 flex flex-col gap-2.5" style={controlsTop ? { top: controlsTop } : undefined}>
+        {!videoSrc && (
+          <button type="button" aria-label={t("Kamerani almashtirish")} onClick={() => setFacing(facing === "user" ? "environment" : "user")}
+            className="flex size-11 items-center justify-center rounded-full bg-black/50 text-white">
+            <SwitchCamera size={20} />
+          </button>
+        )}
         {torch !== null && (
           <button type="button" aria-label={t("Chiroq")} aria-pressed={torch} onClick={toggleTorch}
             className="flex size-11 items-center justify-center rounded-full bg-black/50 text-white">
@@ -287,8 +325,8 @@ export const CameraStage = forwardRef<CameraStageHandle, {
           </button>
         )}
       </div>
-      {stream && (
-        <div className="absolute inset-x-0 bottom-3 flex justify-center gap-2">
+      {(stream || fileReady) && (
+        <div className="absolute inset-x-0 bottom-3 flex justify-center gap-2 transition-[bottom]" style={zoomBottom ? { bottom: zoomBottom } : undefined}>
           {stops.map((z) => (
             <button
               key={z}

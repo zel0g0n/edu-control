@@ -8,22 +8,29 @@ import { useRun } from "@/components/providers";
 import { PageBody, PageHeader } from "@/components/shell";
 import { btn, Card, cx, Field, inputCls, Pill } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
+import { FACE, faceThresholds } from "@/lib/face/config";
 import { faceDiagnostics } from "@/lib/face/diagnostics";
 import { fmt } from "@/lib/format";
+import { usableTemplates } from "@/lib/face/matcher";
 import { useT } from "@/lib/i18n/react";
+
+import { NvrBlock } from "./nvr-block";
 
 export default function DirectorSettings() {
   const app = useApp();
   const t = useT();
   const run = useRun();
   const inst = app.myInstitution!;
-  const [s, setS] = useState<InstitutionSettings>(() => ({ ...inst.settings, faceLiveness: inst.settings.faceLiveness !== false, payments: { ...inst.settings.payments } }));
-  const dirty = JSON.stringify(s) !== JSON.stringify({ ...inst.settings, faceLiveness: inst.settings.faceLiveness !== false });
+  // Chegaralar boshqa model uchun sozlangan bo'lsa: joriy model standartlari
+  const th = faceThresholds(inst.settings);
+  const [s, setS] = useState<InstitutionSettings>(() => ({ ...inst.settings, faceModel: FACE.modelId, matchThreshold: th.match, reviewThreshold: th.review, faceLiveness: inst.settings.faceLiveness !== false, payments: { ...inst.settings.payments } }));
+  // NVR o'z bloki orqali saqlanadi: solishtirishda hisobga olinmaydi
+  const dirty = JSON.stringify({ ...s, nvr: undefined }) !== JSON.stringify({ ...inst.settings, faceModel: FACE.modelId, matchThreshold: th.match, reviewThreshold: th.review, faceLiveness: inst.settings.faceLiveness !== false, nvr: undefined });
   const set = <K extends keyof InstitutionSettings>(k: K, v: InstitutionSettings[K]) => setS({ ...s, [k]: v });
   const setPay = (k: keyof InstitutionSettings["payments"], v: string) => setS({ ...s, payments: { ...s.payments, [k]: v.trim() || undefined } });
 
   const students = app.studentsOfInstitution(inst.id);
-  const diag = useMemo(() => faceDiagnostics(students.map((x) => ({ id: x.id, templates: x.faceTemplates }))), [students]);
+  const diag = useMemo(() => faceDiagnostics(students.map((x) => ({ id: x.id, templates: usableTemplates(x) }))), [students]);
 
   const save = () => run(() => app.run("settings.save", { settings: s }), t("Sozlamalar saqlandi"));
 
@@ -63,10 +70,10 @@ export default function DirectorSettings() {
           <Block icon={ScanFace} title={t("Yuz tanish")}>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t("\"Tanildi\" chegarasi: {v}", { v: s.matchThreshold.toFixed(2) })} hint={t("Yuqori: xato tanish kamayadi, lekin ko'proq qo'lda tasdiqlash kerak")}>
-                <input type="range" min={0.4} max={0.85} step={0.01} value={s.matchThreshold} onChange={(e) => set("matchThreshold", Number(e.target.value))} className="accent-[var(--primary)]" />
+                <input type="range" min={0.3} max={0.75} step={0.01} value={s.matchThreshold} onChange={(e) => set("matchThreshold", Number(e.target.value))} className="accent-[var(--primary)]" />
               </Field>
               <Field label={t("\"Tekshiring\" chegarasi: {v}", { v: s.reviewThreshold.toFixed(2) })} hint={t("Shundan past o'xshashlik: noma'lum yuz")}>
-                <input type="range" min={0.2} max={0.8} step={0.01} value={s.reviewThreshold} onChange={(e) => set("reviewThreshold", Number(e.target.value))} className="accent-[var(--primary)]" />
+                <input type="range" min={0.15} max={0.7} step={0.01} value={s.reviewThreshold} onChange={(e) => set("reviewThreshold", Number(e.target.value))} className="accent-[var(--primary)]" />
               </Field>
             </div>
             <label className="mt-4 flex items-start gap-3">
@@ -95,11 +102,13 @@ export default function DirectorSettings() {
               {diag.impostor.length > 0 && <Histogram genuine={diag.genuine} impostor={diag.impostor} match={s.matchThreshold} review={s.reviewThreshold} />}
               <p className="mt-3 text-xs text-muted">
                 {diag.suggested
-                  ? t("Tavsiya: eng o'xshash ikki xil o'quvchidan 0.15 yuqori. Aka-uka va egizaklar shu ko'rsatkichni oshiradi: ular uchun o'qituvchi tasdig'i so'raladi.")
-                  : t("Tavsiya uchun kamida 5 o'quvchining yuz namunasi kerak. Hozircha kattalar suratlarida sinalgan standart qiymatlar ishlatiladi (0.55 / 0.40).")}
+                  ? t("Tavsiya: eng o'xshash ikki xil o'quvchidan 0.10 yuqori. Aka-uka va egizaklar shu ko'rsatkichni oshiradi: ular uchun o'qituvchi tasdig'i so'raladi.")
+                  : t("Tavsiya uchun kamida 5 o'quvchining yuz namunasi kerak. Hozircha kattalar suratlarida sinalgan standart qiymatlar ishlatiladi (0.40 / 0.28).")}
               </p>
             </div>
           </Block>
+
+          <NvrBlock />
 
           <Block icon={CalendarRange} title={t("O'quv choraklari")}>
             <div className="flex flex-col gap-2">

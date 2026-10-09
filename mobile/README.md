@@ -159,6 +159,10 @@ yuzlarda haqiqiy sinovdan keyin moslashtirish kerak.**
 - Yuz kesimlarini saqlash muddati (masalan 30 kun) backend bosqichida
   belgilanadi.
 
+> Web versiya endi GhostFaceNetV1 W1.3 S1 (512 o'lcham, 5 nuqtali tekislash) ishlatadi. Flutter ilova
+> davom ettirilganda shu model (Keras → TFLite) va bir xil tekislash ishlatilishi kerak, aks holda
+> web va mobil namunalari bir-biriga mos kelmaydi.
+
 Model: MobileFaceNet (`assets/models/mobilefacenet.tflite`, 5 MB),
 FaceRecognitionAuth loyihasidan (BSD-3, `MOBILEFACENET_SOURCE_LICENSE.txt`).
 

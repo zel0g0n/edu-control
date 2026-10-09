@@ -2,7 +2,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
-import { invoiceRemaining, type Database, type Patch } from "@edunazorat/shared";
+import { addDays, invoiceRemaining, type Database, type NvrLesson, type NvrRoster, type Patch } from "@edunazorat/shared";
 
 import { createApp } from "../bootstrap";
 import { loadConfig } from "../config";
@@ -26,11 +26,15 @@ async function call<T = unknown>(path: string, body?: unknown, token?: string, h
 }
 
 /** Har bir kirish uchun yangi raqam bilan cheklovga tushmaslik: telefon bo'yicha alohida. */
+const tokenCache = new Map<string, string>();
 async function login(phone: string): Promise<string> {
+  const cached = tokenCache.get(phone);
+  if (cached) return cached;
   const r = await call<{ devCode: string }>("/auth/request-code", { phone });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   const v = await call<{ token: string }>("/auth/verify-code", { phone, code: r.data.devCode });
   assert.equal(v.status, 200);
+  tokenCache.set(phone, v.data.token);
   return v.data.token;
 }
 
@@ -208,6 +212,72 @@ describe("to'lov tizimlari", () => {
     assert.equal(invoiceRemaining(app.get(StoreService).db.invoices.find((i) => i.id === inv.id)!), 0);
     const parentNote = app.get(StoreService).db.notifications.find((n) => n.key === "notif.payment" && n.params.method === "click");
     assert.ok(parentNote);
+  });
+});
+
+describe("NVR integratsiyasi", () => {
+  const key = "edn_" + "ab12".repeat(12);
+  const nvr = <T = unknown>(path: string, body?: unknown, k = key) => call<T>(`/integrations/nvr/v1${path}`, body, k);
+  let director = "", teacher = "";
+  before(async () => {
+    director = await login("998901111111");
+    teacher = await login("998903333333");
+  });
+
+  it("kalitsiz/noto'g'ri kalit rad etiladi, faqat direktor sozlaydi", async () => {
+    assert.equal((await nvr("/ping", undefined, "edn_" + "0".repeat(48))).status, 401);
+    assert.equal((await call("/integrations/nvr/v1/ping")).status, 401);
+    const keyHash = createHash("sha256").update(key).digest("hex");
+    assert.equal((await call("/commands/nvr.configure", { enabled: true, keyHash, keyPrefix: key.slice(0, 8) }, teacher)).status, 403);
+    assert.equal((await call("/commands/nvr.configure", { enabled: true, keyHash, keyPrefix: key.slice(0, 8) }, director)).status, 200);
+    const p = await nvr<{ ok: boolean; institution: { id: string } }>("/ping");
+    assert.equal(p.status, 200);
+    assert.equal(p.data.institution.id, "inst_school");
+    // Kalit xeshi boshqa rollarga ko'rinmaydi
+    const boot = await call<Database>("/bootstrap", undefined, teacher);
+    assert.equal(boot.data.institutions[0].settings.nvr, undefined);
+  });
+
+  it("ro'yxat, jadval va dars davomati (o'qituvchi belgisi ustun)", async () => {
+    const roster = await nvr<NvrRoster>("/roster");
+    assert.ok(roster.data.students.length > 5);
+    assert.ok(!JSON.stringify(roster.data).includes("998"), "telefon raqamlari chiqmasligi kerak");
+    // Kelgusi hafta: hali hech kim belgilamagan kun
+    let day = "", lesson: NvrLesson | undefined;
+    const today = new Date().toISOString().slice(0, 10);
+    for (let i = 7; i < 14 && !lesson; i++) {
+      day = addDays(today, i);
+      const s = await nvr<{ lessons: NvrLesson[] }>(`/schedule?day=${day}`);
+      lesson = s.data.lessons.find((l) => l.teacher === "Dilnoza Karimova");
+    }
+    assert.ok(lesson, "dars topilmadi");
+    const kids = roster.data.students.filter((s) => s.classId === lesson!.classId);
+    // O'qituvchi bir o'quvchini o'zi belgilaydi
+    assert.equal((await call("/commands/attendance.mark", { lessonId: lesson!.id, day, marks: [{ studentId: kids[0].id, status: "absent", source: "manual" }] }, teacher)).status, 200);
+    const r = await nvr<{ applied: number; skipped: { studentId: string; reason: string }[] }>("/attendance", {
+      lessonId: lesson!.id, day, cameraId: "xona-204",
+      marks: [
+        { studentId: kids[0].id, status: "present", confidence: 0.9 },
+        { studentId: kids[1].id, status: "present", confidence: 0.82, seenAt: Date.now(), snapshot: "data:image/jpeg;base64,AAAA" },
+        { studentId: "s_begona", status: "present" },
+      ],
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.applied, 1);
+    assert.deepEqual(r.data.skipped.map((x) => x.reason).sort(), ["teacherMarked", "unknownStudent"]);
+    const db = app.get(StoreService).db;
+    const rec = db.attendance.find((a) => a.studentId === kids[1].id && a.lessonId === lesson!.id && a.day === day)!;
+    assert.equal(rec.source, "nvr");
+    assert.equal(db.attendance.find((a) => a.studentId === kids[0].id && a.lessonId === lesson!.id && a.day === day)!.status, "absent");
+    const parents = db.students.find((s) => s.id === kids[1].id)!.parentIds;
+    assert.ok(db.notifications.some((n) => parents.includes(n.userId) && n.key === "notif.attendance.present.face" && n.image));
+    // Noto'g'ri kun (jadvalda shu kuni bu dars yo'q)
+    assert.equal((await nvr("/attendance", { lessonId: lesson!.id, day: addDays(day, 1), marks: [{ studentId: kids[1].id, status: "present" }] })).status, 400);
+  });
+
+  it("kalit bekor qilinsa ishlamaydi", async () => {
+    assert.equal((await call("/commands/nvr.configure", { enabled: false, revoke: true }, director)).status, 200);
+    assert.equal((await nvr("/ping")).status, 401);
   });
 });
 

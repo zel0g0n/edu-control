@@ -15,6 +15,7 @@ import {
 } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
 import { fmt, termLabel } from "@/lib/format";
+import { needsReenroll, usableTemplates } from "@/lib/face/matcher";
 import { useT } from "@/lib/i18n/react";
 
 export function ClassClient() {
@@ -96,7 +97,8 @@ export function ClassClient() {
               {
                 key: "face", header: t("Yuz namunasi"),
                 cell: (s) => !s.parentConsent ? <Pill tone="slate" icon={ShieldOff}>{t("Rozilik yo'q")}</Pill>
-                  : s.faceTemplates.length ? (
+                  : needsReenroll(s) ? <Link href={`/teacher/enroll/${s.id}`} className={cx(btn.smPrimary, "h-8 !bg-warn")}><ScanFace size={15} aria-hidden /> {t("Qayta olish kerak")}</Link>
+                  : usableTemplates(s).length ? (
                     <span className="flex items-center gap-2"><Pill tone="ok" icon={ScanFace}>{t("Bor")}</Pill>
                       <Link href={`/teacher/enroll/${s.id}`} className="text-xs text-primary hover:underline">{t("Yangilash")}</Link></span>
                   ) : <Link href={`/teacher/enroll/${s.id}`} className={cx(btn.smPrimary, "h-8")}><ScanFace size={15} aria-hidden /> {t("Ro'yxatga olish")}</Link>,

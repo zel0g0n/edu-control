@@ -19,6 +19,7 @@ const COMMANDS = new Set<string>([
   "submission.review", "invoice.generate", "invoice.adjust", "payment.add", "message.send", "thread.read", "notification.read",
   "announcement.send", "consent.set", "face.enroll", "student.save", "student.archive", "teacher.save", "teacher.setActive",
   "class.save", "class.delete", "lesson.save", "lesson.delete", "term.save", "settings.save", "institution.save", "institution.setActive",
+  "nvr.configure",
   // "payment.demoOnline" serverda yo'q: haqiqiy to'lov faqat Click/Payme orqali.
 ] satisfies CommandName[]);
 

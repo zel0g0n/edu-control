@@ -68,7 +68,7 @@ export function LessonClient() {
                     <Avatar name={s.name} image={r?.snapshot ?? s.facePhoto} size={38} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{s.name}</span>
-                      {r && <span className="tabular block text-xs text-muted">{fmt.time(r.markedAt)}{r.source === "face" ? ` · ${t("kamera")}${r.matchScore ? ` ${Math.round(r.matchScore * 100)}%` : ""}` : ""}</span>}
+                      {r && <span className="tabular block text-xs text-muted">{fmt.time(r.markedAt)}{r.source === "face" || r.source === "nvr" ? ` · ${r.source === "nvr" ? "NVR" : t("kamera")}${r.matchScore ? ` ${Math.round(r.matchScore * 100)}%` : ""}` : ""}</span>}
                     </span>
                     {r ? <AttendancePill status={r.status} /> : <span className="text-xs text-muted">{t("belgilanmagan")}</span>}
                   </div>

@@ -1,6 +1,6 @@
 import type * as Ort from "onnxruntime-web";
 
-import { alignedFaceTensor, l2normalize } from "./align";
+import { alignFace, l2normalize } from "./align";
 import { FACE } from "./config";
 import type { Point, RgbaImage } from "./image";
 import { cropRgba, mergeDetections, offsetDetection, type Region } from "./tiles";
@@ -9,7 +9,7 @@ import { decodeYunet, letterboxBGR, type Detection, type YunetOutputs } from "./
 type OrtModule = typeof Ort;
 
 /**
- * YuNet (yuz topish) + MobileFaceNet (raqamli namuna). Brauzerda Web
+ * YuNet (yuz topish) + GhostFaceNet (raqamli namuna, 512 o'lcham). Brauzerda Web
  * Worker ichida, testlarda Node'da ishlaydi. Hech narsa tarmoqqa
  * yuborilmaydi.
  */
@@ -57,11 +57,22 @@ export class FaceEngine {
     return { full: f, perRegion };
   }
 
-  async embed(img: RgbaImage, kps: Point[]): Promise<Float32Array> {
+  /** Raqamli namuna + sifat (keskinlik). FACE.flipTTA: ko'zgu nusxasi bilan ikki marta. */
+  async embed(img: RgbaImage, kps: Point[]): Promise<{ embedding: Float32Array; quality: number }> {
     const size = FACE.embedSize;
-    const data = alignedFaceTensor(img, kps, size);
-    const input = new this.ort.Tensor("float32", data, [1, size, size, 3]);
-    const res = await this.embedder.run({ [this.embedder.inputNames[0]]: input });
-    return l2normalize(res[this.embedder.outputNames[0]].data as Float32Array);
+    const a = alignFace(img, kps, size, FACE.embedMean, FACE.embedStd);
+    const run = async (data: Float32Array) => {
+      const input = new this.ort.Tensor("float32", data, [1, size, size, 3]);
+      const res = await this.embedder.run({ [this.embedder.inputNames[0]]: input });
+      return res[this.embedder.outputNames[0]].data as Float32Array;
+    };
+    const e = await run(a.tensor);
+    if (FACE.flipTTA) {
+      const f = await run(a.flipped);
+      const sum = new Float32Array(e.length);
+      for (let i = 0; i < e.length; i++) sum[i] = e[i] + f[i];
+      return { embedding: l2normalize(sum), quality: a.sharpness };
+    }
+    return { embedding: l2normalize(e), quality: a.sharpness };
   }
 }

@@ -7,6 +7,7 @@ import { SmsService } from "./auth/sms.service";
 import { TokenService } from "./auth/token.service";
 import { CONFIG, type Config } from "./config";
 import { SQL, type Sql } from "./db/sql";
+import { NvrController, NvrKeyGuard } from "./nvr.controller";
 import { PaymentsService } from "./payments.service";
 import { PushService } from "./push.service";
 import { RealtimeService } from "./realtime.service";
@@ -17,11 +18,11 @@ export class AppModule {
   static create(config: Config, sql: Sql): DynamicModule {
     return {
       module: AppModule,
-      controllers: [AppController],
+      controllers: [AppController, NvrController],
       providers: [
         { provide: CONFIG, useValue: config },
         { provide: SQL, useValue: sql },
-        StoreService, SmsService, OtpService, TokenService, AuthGuard, RealtimeService, PushService, PaymentsService,
+        StoreService, SmsService, OtpService, TokenService, AuthGuard, RealtimeService, PushService, PaymentsService, NvrKeyGuard,
       ],
     };
   }

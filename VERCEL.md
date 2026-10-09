@@ -108,6 +108,14 @@ GitHub sahifasini yangilasangiz, `api`, `shared`, `web` papkalari ko'rinadi.
 Haqiqiy bolalar yuzini sinasangiz: ota-ona roziligini oling, sinovdan keyin profil →
 **Demo ma'lumotlarni tiklash** bilan o'chiring.
 
+### Demo video (o'quvchilarsiz sinash)
+
+Kamera sahifasida **Demo videoda ko'rish** tugmasi bor (faqat demo rejimda). Kamera o'rniga sinf videosi ochiladi:
+8 ta sun'iy yuz shu sinf o'quvchilariga biriktiriladi, 7 tasi videoda bor (biri "kelmagan"), 2 ta begona yuz
+ro'yxatda yo'q. Yashil doira va ismlar, "Keldi" ro'yxati va yakunlash qanday ishlashini ko'rasiz.
+Yuzlar sun'iy intellekt yaratgan, mavjud bo'lmagan odamlar (SFHQ, MIT litsenziya). Bu ko'rsatish uchun,
+aniqlik o'lchovi emas.
+
 ## 6-qadam. Yangilash
 
 Men yangi zip yuborganimda:

@@ -1,5 +1,6 @@
 // Buyruqlarni bajaruvchi yagona "server" mantig'i: demo rejimda brauzerda,
 // NestJS backendda esa serverda ishlaydi. Natija har doim Patch.
+import { isPresent } from "./attendance";
 import { findConflicts, validTimeRange } from "./schedule";
 import { hm } from "./dates";
 import { invoiceRemaining, invoicesToCreate } from "./billing";
@@ -81,7 +82,7 @@ const handlers: { [K in CommandName]: Handler<K> } = {
       const prev = ctx.db.attendance.find((a) => a.studentId === s.id && a.lessonId === lessonId && a.day === day);
       const rec = {
         id: prev?.id ?? newId("a"), studentId: s.id, lessonId, day, status: m.status, source: m.source,
-        markedAt: ctx.now, markedBy: ctx.actor.id, snapshot: m.snapshot ?? prev?.snapshot, matchScore: m.score,
+        markedAt: ctx.now, markedBy: ctx.actor.id, snapshot: isPresent(m.status) ? (m.snapshot ?? prev?.snapshot) : undefined, matchScore: m.score,
       };
       attendance.push(rec);
       if (prev?.status === m.status) continue;
@@ -280,17 +281,22 @@ const handlers: { [K in CommandName]: Handler<K> } = {
   "consent.set"(ctx, { studentId, consent }) {
     const s = must(ctx.db.students.find((x) => x.id === studentId));
     if (!(ctx.actor.role === "parent" && ctx.actor.childIds.includes(s.id))) deny();
-    return { upsert: { students: [consent ? { ...s, parentConsent: true } : { ...s, parentConsent: false, faceTemplates: [], facePhoto: undefined }] } };
+    return { upsert: { students: [consent ? { ...s, parentConsent: true } : { ...s, parentConsent: false, faceTemplates: [], facePhoto: undefined, faceModel: undefined }] } };
   },
 
-  "face.enroll"(ctx, { studentId, templates, photo }) {
+  "face.enroll"(ctx, { studentId, templates, photo, model }) {
     const s = must(ctx.db.students.find((x) => x.id === studentId));
     const teaches = ctx.db.lessons.some((l) => l.classId === s.classId && l.teacherId === ctx.actor.id) ||
       ctx.db.classes.some((c) => c.id === s.classId && c.homeroomTeacherId === ctx.actor.id);
     if (!(teaches || (ctx.actor.role === "director" && ctx.actor.institutionId === s.institutionId))) deny();
     if (!s.parentConsent) throw new CommandError("err.noConsent");
-    if (templates.length === 0 || templates.some((t) => t.length !== 192)) throw new CommandError("err.faceTemplate");
-    return { upsert: { students: [{ ...s, faceTemplates: templates, facePhoto: photo }] } };
+    // 128..1024 o'lchamli, bir xil uzunlikdagi vektorlar (model web tomonda tanlanadi)
+    const len = templates[0]?.length ?? 0;
+    if (templates.length === 0 || templates.length > 24 || len < 128 || len > 1024 || templates.some((t) => t.length !== len || t.some((v) => !Number.isFinite(v)))) {
+      throw new CommandError("err.faceTemplate");
+    }
+    const faceModel = typeof model === "string" && /^[a-z0-9.-]{1,40}$/.test(model) ? model : undefined;
+    return { upsert: { students: [{ ...s, faceTemplates: templates, facePhoto: photo, faceModel }] } };
   },
 
   "student.save"(ctx, p) {
@@ -421,7 +427,22 @@ const handlers: { [K in CommandName]: Handler<K> } = {
     const s = settings;
     if (!(s.reviewThreshold > 0 && s.reviewThreshold < s.matchThreshold && s.matchThreshold < 1)) throw new CommandError("err.thresholds");
     if (!(s.lateAfterMinutes >= 0 && s.lateAfterMinutes <= 60) || !(s.paymentDueDay >= 1 && s.paymentDueDay <= 28)) throw new CommandError("err.settings");
-    return { upsert: { institutions: [{ ...inst, settings: s }] } };
+    // NVR kaliti faqat "nvr.configure" orqali o'zgaradi
+    return { upsert: { institutions: [{ ...inst, settings: { ...s, nvr: inst.settings.nvr } }] } };
+  },
+
+  "nvr.configure"(ctx, p) {
+    requireDirector(ctx);
+    const inst = must(ctx.db.institutions.find((i) => i.id === instOf(ctx)));
+    const prev = inst.settings.nvr ?? { enabled: false };
+    let nvr = { ...prev, enabled: !!p.enabled };
+    if (p.revoke) nvr = { enabled: false };
+    if (p.keyHash !== undefined) {
+      if (!/^[0-9a-f]{64}$/.test(p.keyHash) || !/^edn_[0-9a-f]{4,8}$/.test(p.keyPrefix ?? "")) throw new CommandError("err.required", { field: "keyHash" });
+      nvr = { ...nvr, keyHash: p.keyHash, keyPrefix: p.keyPrefix, keyCreatedAt: ctx.now };
+    }
+    if (nvr.enabled && !nvr.keyHash) throw new CommandError("err.nvrNoKey");
+    return { upsert: { institutions: [{ ...inst, settings: { ...inst.settings, nvr } }] } };
   },
 
   "institution.save"(ctx, p) {

@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // Dev rejimidagi "N" belgisi (Cache disabled) tugmalarni to'sib qo'ymasin
+  devIndicators: false,
   // Dev rejimida telefondan (lokal tarmoq IP) yoki tunnel orqali ochishga ruxsat
   allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*", "*.trycloudflare.com", "*.ngrok-free.app"],
   partialPrefetching: true,

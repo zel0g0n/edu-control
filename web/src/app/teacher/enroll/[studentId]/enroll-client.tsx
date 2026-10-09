@@ -11,7 +11,8 @@ import { useRouteParam } from "@/components/route-param";
 import { btn, cx, EmptyState, Modal } from "@/components/ui";
 import { faceWorker } from "@/lib/face/client";
 import { FACE } from "@/lib/face/config";
-import { cosine, FaceGallery } from "@/lib/face/matcher";
+import { l2normalize } from "@/lib/face/align";
+import { cosine, FaceGallery, usableTemplates } from "@/lib/face/matcher";
 import { eyeDistance, yawRatio, type Detection } from "@/lib/face/yunet";
 import { useApp } from "@/lib/data/store";
 import { t as tr } from "@/lib/i18n";
@@ -39,6 +40,7 @@ export function EnrollClient() {
   const samples = useRef<Float32Array[]>([]);
   const photo = useRef<string | undefined>(undefined);
   const sideSign = useRef(0);
+  const poseFrames = useRef<Float32Array[]>([]);
   const stable = useRef(0);
   const stepRef = useRef<Step>(0);
   const paused = useRef(false);
@@ -46,7 +48,7 @@ export function EnrollClient() {
   const save = async () => {
     if (!s) return;
     const templates = samples.current.map((e) => Array.from(e, (v) => Math.round(v * 1e5) / 1e5));
-    const ok = await run(() => app.run("face.enroll", { studentId: s.id, templates, photo: photo.current }));
+    const ok = await run(() => app.run("face.enroll", { studentId: s.id, templates, photo: photo.current, model: FACE.modelId }));
     if (!ok) return;
     toast(t("{name}: yuz namunasi saqlandi", { name: s.name }), "ok");
     router.replace(`/teacher/classes/${s.classId}?tab=students`);
@@ -78,7 +80,7 @@ export function EnrollClient() {
       if (minSim < FACE.reviewThreshold) return restart(tr("Namunalar sifati past (yorug'likni tekshiring). Qaytadan boshlaymiz."));
       // 2) Takror: boshqa o'quvchiga juda o'xshamasligi kerak.
       const others = app.studentsOfInstitution(s.institutionId).filter((x) => x.id !== s.id);
-      const gallery = new FaceGallery(Object.fromEntries(others.map((x) => [x.id, x.faceTemplates])));
+      const gallery = new FaceGallery(Object.fromEntries(others.map((x) => [x.id, usableTemplates(x)])));
       let worst = { id: "", score: 0 };
       for (const e of list) {
         const r = gallery.match(e);
@@ -129,9 +131,17 @@ export function EnrollClient() {
         return setHint(INSTRUCTION()[st]);
       }
       if (++stable.current < 2) return; // ikki ketma-ket mos kadr: xira tasvirni kamaytiradi
+      const [r] = await faceWorker.embedWithQuality([d.kps]);
+      if (!alive || !r) return;
+      if (r.quality < FACE.enrollMinSharpness) return setHint(tr("Tasvir xira: telefonni qimirlatmang"));
+      // Har bir holat uchun 3 ta keskin kadr o'rtachasi: bitta kadrdagi shovqin kamayadi
+      poseFrames.current.push(r.embedding);
+      if (poseFrames.current.length < 3) return;
       stable.current = 0;
-      const [emb] = await faceWorker.embed([d.kps]);
-      if (!alive || !emb) return;
+      const mean = new Float32Array(r.embedding.length);
+      for (const e of poseFrames.current) for (let i = 0; i < e.length; i++) mean[i] += e[i];
+      poseFrames.current = [];
+      const emb = l2normalize(mean);
       samples.current.push(emb);
       if (st === 0) photo.current = faceSnapshot(canvas, d);
       if (st === 1) sideSign.current = Math.sign(yaw);

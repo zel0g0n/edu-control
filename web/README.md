@@ -42,7 +42,7 @@ src/
   lib/
     data/store.ts         holat va so'rovlar; o'zgartirish faqat buyruqlar orqali
     data/transport.ts     LocalTransport (demo) yoki RemoteTransport (NestJS, SSE)
-    face/                 yuz tanish: YuNet + MobileFaceNet (Web Worker, onnxruntime-web), jonlilik, diagnostika
+    face/                 yuz tanish: YuNet + GhostFaceNet (Web Worker, onnxruntime-web), jonlilik, diagnostika
     i18n/                 til (lug'atlar shared/src/i18n da)
     export.ts             XLSX yozuvchi
     push.ts               brauzer bildirishnomalari, Web Push obunasi

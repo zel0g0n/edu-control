@@ -11,6 +11,7 @@ import { Avatar, avgTone, btn, Card, DataTable, EmptyState, Pill, SearchInput, S
 import { useApp } from "@/lib/data/store";
 import { exportXlsx } from "@/lib/export";
 import { fmt } from "@/lib/format";
+import { needsReenroll, usableTemplates } from "@/lib/face/matcher";
 import { useT } from "@/lib/i18n/react";
 
 export default function DirectorStudents() {
@@ -44,7 +45,7 @@ export default function DirectorStudents() {
         const st = stats(s.id);
         const ps = app.parentsOfStudent(s.id);
         return [s.name, app.schoolClass(s.classId)?.name, ps.map((p) => p.name).join(", "), ps.map((p) => fmt.phone(p.phone)).join(", "),
-          st.att === null ? "" : Math.round(st.att * 100) / 100, st.avg === null ? "" : Number(st.avg.toFixed(2)), st.debt, s.faceTemplates.length ? t("Bor") : s.parentConsent ? t("Yo'q") : t("Rozilik yo'q")];
+          st.att === null ? "" : Math.round(st.att * 100) / 100, st.avg === null ? "" : Number(st.avg.toFixed(2)), st.debt, usableTemplates(s).length ? t("Bor") : needsReenroll(s) ? t("Qayta olish kerak") : s.parentConsent ? t("Yo'q") : t("Rozilik yo'q")];
       })],
     }]);
   };
@@ -93,7 +94,7 @@ export default function DirectorStudents() {
               const d = stats(s.id).debt;
               return d ? <span className="font-semibold text-bad">{fmt.moneyShort(d)}</span> : <span className="text-muted">—</span>;
             } },
-            { key: "face", header: t("Yuz"), align: "center", hideOnMobile: true, cell: (s) => s.faceTemplates.length
+            { key: "face", header: t("Yuz"), align: "center", hideOnMobile: true, cell: (s) => usableTemplates(s).length
               ? <ScanFace size={18} className="inline text-ok" aria-label={t("Bor")} /> : !s.parentConsent ? <ShieldOff size={18} className="inline text-muted" aria-label={t("Rozilik yo'q")} /> : <span className="text-muted">—</span> },
           ]}
         />

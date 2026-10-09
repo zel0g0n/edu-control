@@ -77,9 +77,14 @@ class FaceWorkerClient {
 
   /** Oxirgi kadrdagi yuzlar uchun raqamli namunalar. */
   async embed(kps: Point[][]): Promise<Float32Array[]> {
+    return (await this.embedWithQuality(kps)).map((x) => x.embedding);
+  }
+
+  /** Namuna va sifat (keskinlik): xira kadrlar o'rtachaga kamroq ta'sir qiladi. */
+  async embedWithQuality(kps: Point[][]): Promise<{ embedding: Float32Array; quality: number }[]> {
     if (kps.length === 0) return [];
     const r = await this.call({ type: "embed", id: this.seq++, kps });
-    return r.type === "embedded" ? r.embeddings : [];
+    return r.type === "embedded" ? r.embeddings.map((embedding, i) => ({ embedding, quality: r.qualities[i] ?? 0 })) : [];
   }
 }
 

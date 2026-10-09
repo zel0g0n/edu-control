@@ -39,10 +39,10 @@ export function faceDiagnostics(list: { id: string; templates: ArrayLike<number>
   const minGenuine = genuine.length ? Math.min(...genuine) : null;
   let suggested: FaceDiagnostics["suggested"] = null;
   if (maxImpostor !== null && enrolled.length >= 5) {
-    const match = round2(clamp(maxImpostor + 0.15, 0.45, 0.75));
+    const match = round2(clamp(maxImpostor + 0.1, 0.36, 0.7));
     const sorted = [...impostor].sort((x, y) => x - y);
     const p95 = sorted[Math.floor((sorted.length - 1) * 0.95)];
-    const review = round2(clamp(p95 + 0.05, 0.3, match - 0.08));
+    const review = round2(clamp(p95 + 0.05, 0.22, match - 0.08));
     suggested = { match, review };
   }
   return { students: enrolled.length, genuine, impostor, maxImpostor, minGenuine, suggested };

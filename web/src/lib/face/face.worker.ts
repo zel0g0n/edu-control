@@ -13,10 +13,29 @@ let frame: RgbaImage | null = null;
 
 const post = (msg: WorkerResponse, transfer: Transferable[] = []) => self.postMessage(msg, transfer);
 
+/** Modellar telefonda saqlanadi (Cache API): keyingi ochilishda internet sarflanmaydi. */
+const MODEL_CACHE = "edunazorat-models-v2";
+
 async function fetchModel(url: string): Promise<Uint8Array> {
+  let cache: Cache | undefined;
+  try {
+    cache = await caches.open(MODEL_CACHE);
+    const hit = await cache.match(url);
+    if (hit) return new Uint8Array(await hit.arrayBuffer());
+  } catch {
+    cache = undefined; // xavfsiz kontekst emas yoki xotira yo'q
+  }
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Model yuklanmadi: ${url} (${res.status})`);
-  return new Uint8Array(await res.arrayBuffer());
+  const buf = await res.arrayBuffer();
+  try {
+    await cache?.put(url, new Response(buf.slice(0), { headers: { "Content-Type": "application/octet-stream" } }));
+    // Eski versiyalar keshini tozalash
+    for (const k of await caches.keys()) if (k.startsWith("edunazorat-models-") && k !== MODEL_CACHE) await caches.delete(k);
+  } catch {
+    /* saqlab bo'lmadi: keyingi safar qayta yuklanadi */
+  }
+  return new Uint8Array(buf);
 }
 
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
@@ -44,8 +63,13 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     } else if (m.type === "embed") {
       if (!engine || !frame) throw new Error("Kadr yo'q");
       const embeddings: Float32Array[] = [];
-      for (const kps of m.kps) embeddings.push(await engine.embed(frame, kps));
-      post({ type: "embedded", id: m.id, embeddings }, embeddings.map((x) => x.buffer));
+      const qualities: number[] = [];
+      for (const kps of m.kps) {
+        const r = await engine.embed(frame, kps);
+        embeddings.push(r.embedding);
+        qualities.push(r.quality);
+      }
+      post({ type: "embedded", id: m.id, embeddings, qualities }, embeddings.map((x) => x.buffer as ArrayBuffer));
     }
   } catch (err) {
     post({ type: "error", id: "id" in m ? m.id : undefined, message: err instanceof Error ? err.message : String(err) });

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ListChecks, RefreshCw, RotateCcw, ScanFace, Smartphone, Trash2, UserCheck, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronUp, Film, ListChecks, RefreshCw, RotateCcw, ScanFace, Smartphone, Trash2, UserCheck, X } from "lucide-react";
 import { arrivalStatus, type AttendanceStatus, type Student } from "@edunazorat/shared";
 
 import { CameraStage, faceSnapshot, type CameraStageHandle, type CapturedFrame } from "@/components/camera-stage";
@@ -13,8 +13,8 @@ import { Avatar, btn, cx, EmptyState, Modal } from "@/components/ui";
 import { setAttendanceDraft, type PendingMark } from "@/lib/attendance-draft";
 import { useApp } from "@/lib/data/store";
 import { faceWorker } from "@/lib/face/client";
-import { FACE } from "@/lib/face/config";
-import { FaceGallery, Tracker, type Track } from "@/lib/face/matcher";
+import { FACE, faceThresholds } from "@/lib/face/config";
+import { FaceGallery, qualityWeight, Tracker, usableTemplates, type Track } from "@/lib/face/matcher";
 import { SceneScanner } from "@/lib/face/scanner";
 import { eyeDistance, yawRatio, type Detection } from "@/lib/face/yunet";
 import { fmt } from "@/lib/format";
@@ -65,12 +65,18 @@ export function CameraClient() {
   const settings = app.myInstitution?.settings;
   const stage = useRef<CameraStageHandle>(null);
   const [students] = useState<Student[]>(() => (lesson ? app.studentsOfClass(lesson.classId) : []));
-  const [gallery] = useState(() => new FaceGallery(
-    Object.fromEntries(students.filter((s) => s.parentConsent).map((s) => [s.id, s.faceTemplates])),
-    { match: settings?.matchThreshold ?? FACE.matchThreshold, review: settings?.reviewThreshold ?? FACE.reviewThreshold, margin: FACE.minMargin },
+  const thresholds = { ...faceThresholds(settings), margin: FACE.minMargin };
+  const [gallery, setGallery] = useState(() => new FaceGallery(
+    Object.fromEntries(students.filter((s) => s.parentConsent).map((s) => [s.id, usableTemplates(s)])),
+    thresholds,
   ));
+  /** Demo video: kamera o'rniga sun'iy yuzlardagi sinf videosi (faqat demo rejimda). */
+  const [demo, setDemo] = useState<{ src: string; photos: Map<string, string> } | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
   const livenessOn = settings?.faceLiveness !== false;
   const tracker = useRef(new Tracker());
+  /** Bitta yuz namunasi o'rtacha necha ms (qurilma tezligi). */
+  const embedMs = useRef(60);
   const scanner = useRef(new SceneScanner(FACE.tileSize, 0.2, 3, FACE.cycleTargetMs));
   const recognizedRef = useRef(new Map<string, Recognized>());
   const [recognized, setRecognized] = useState<Map<string, Recognized>>(new Map());
@@ -83,10 +89,60 @@ export function CameraClient() {
   const [finish, setFinish] = useState(false);
   const [saving, setSaving] = useState(false);
   const [portraitHint, setPortraitHint] = useState(false);
+  const [warnClosed, setWarnClosed] = useState(false);
+  /** Yotiq telefon yoki keng ekran: hisobot o'ngda, aks holda pastdan chiquvchi panel. */
+  const [side, setSide] = useState(false);
+  /** Telefonda hisobot paneli: yig'iq (kamera to'liq ko'rinadi) yoki ochiq ro'yxat. */
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const pendingRef = useRef(new Map<string, { view: FaceView; seen: number }>());
+  const [pending, setPending] = useState<{ sid: string; view: FaceView }[]>([]);
 
   const byId = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
-  const student = useCallback((id: string) => byId.get(id), [byId]);
-  const enrolled = students.filter((s) => s.parentConsent && s.faceTemplates.length > 0).length;
+  const student = useCallback((id: string) => {
+    const s = byId.get(id);
+    // Demo: o'quvchi namunasi o'rnida videodagi sun'iy yuz
+    return s && demo?.photos.has(id) ? { ...s, facePhoto: demo.photos.get(id) } : s;
+  }, [byId, demo]);
+  const enrolled = demo ? Object.values(gallery.templates).filter((t) => t.length > 0).length
+    : students.filter((s) => s.parentConsent && usableTemplates(s).length > 0).length;
+
+  /**
+   * Demo: video fayldagi 8 ta sun'iy yuz shu sinf o'quvchilariga (alifbo bo'yicha) biriktiriladi.
+   * Ma'lumotlar o'zgarmaydi: namunalar faqat shu oynada ishlatiladi. Bitta yuz videoda yo'q (kelmagan),
+   * ikkita begona yuz esa ro'yxatda yo'q (tanilmasligi kerak).
+   */
+  const startDemo = async () => {
+    setDemoLoading(true);
+    try {
+      const res = await fetch("/demo/sinf-demo.json");
+      const data = (await res.json()) as { model: string; faces: { id: string; photo: string; templates: number[][] }[] };
+      if (data.model !== FACE.modelId) throw new Error("model");
+      const sorted = [...students].sort((a, b) => a.name.localeCompare(b.name));
+      const templates: Record<string, number[][]> = {};
+      const photos = new Map<string, string>();
+      data.faces.forEach((f, i) => {
+        const s = sorted[i];
+        if (!s) return;
+        templates[s.id] = f.templates;
+        photos.set(s.id, f.photo);
+      });
+      recognizedRef.current.clear();
+      pendingRef.current.clear();
+      tracker.current = new Tracker();
+      scanner.current.reset();
+      publish();
+      setPending([]);
+      setGallery(new FaceGallery(templates, thresholds));
+      const v = document.createElement("video");
+      const src = v.canPlayType('video/webm; codecs="vp9"') ? "/demo/sinf-demo.webm" : "/demo/sinf-demo.mp4";
+      setDemo({ src, photos });
+      setWarnClosed(true);
+    } catch {
+      toast(t("Demo videoni yuklab bo'lmadi"));
+    } finally {
+      setDemoLoading(false);
+    }
+  };
 
   const publish = () => setRecognized(new Map(recognizedRef.current));
 
@@ -110,7 +166,10 @@ export function CameraClient() {
 
   // Telefon tik turgan bo'lsa: yotqizish maslahati (butun sinf sig'ishi uchun).
   useEffect(() => {
-    const check = () => setPortraitHint(window.innerWidth < 900 && window.innerHeight > window.innerWidth);
+    const check = () => {
+      setPortraitHint(window.innerWidth < 900 && window.innerHeight > window.innerWidth);
+      setSide(window.innerWidth >= 1024 || window.innerWidth > window.innerHeight);
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -176,8 +235,12 @@ export function CameraClient() {
       if (!gallery.isEmpty && candidates.length) {
         // Navbat: uzoq vaqt tekshirilmaganlar birinchi, keyin kattaroqlari.
         candidates.sort((a, b) => tracks[a].lastEmbed - tracks[b].lastEmbed || dets[b].box[2] - dets[a].box[2]);
-        const batch = candidates.slice(0, FACE.maxEmbeddingsPerFrame);
-        const embs = await faceWorker.embed(batch.map((i) => dets[i].kps));
+        // Sekin telefonda bir siklda kamroq yuz: kadrlar tezligi tushib ketmasin (qolganlari navbatda)
+        const per = Math.max(2, Math.min(FACE.maxEmbeddingsPerFrame, Math.floor(FACE.embedBudgetMs / Math.max(1, embedMs.current))));
+        const batch = candidates.slice(0, per);
+        const te = performance.now();
+        const embs = await faceWorker.embedWithQuality(batch.map((i) => dets[i].kps));
+        embedMs.current = embedMs.current * 0.7 + ((performance.now() - te) / Math.max(1, batch.length)) * 0.3;
         if (!alive || pausedRef.current) return;
         batch.forEach((i, k) => {
           const tr = tracks[i];
@@ -187,7 +250,8 @@ export function CameraClient() {
           const exclude = new Set<string>();
           for (const [sid, r] of recognizedRef.current) if (r.trackId !== undefined && r.trackId !== tr.id && visible.has(r.trackId)) exclude.add(sid);
           // Kadrlar bo'yicha o'rtacha namuna bilan solishtiriladi.
-          const mean = tr.addEmbedding(embs[k]);
+          if (!embs[k]) return;
+          const mean = tr.addEmbedding(embs[k].embedding, 8, qualityWeight(embs[k].quality));
           const eye = eyeDistance(det);
           const r = gallery.match(mean, exclude, eye < FACE.smallFaceEyePx && tr.samples >= 3);
           const requireLive = livenessOn && eye >= FACE.livenessMinEyePx;
@@ -214,6 +278,13 @@ export function CameraClient() {
         });
       }
       if (alive && !pausedRef.current) {
+        // Tasdiq kutayotganlar (sariq): bir necha soniya ro'yxatda turadi, bir bosishda "keldi"
+        const now = Date.now();
+        for (const v of next) {
+          if ((v.kind === "review" || v.kind === "photo") && v.studentId && !recognizedRef.current.has(v.studentId)) pendingRef.current.set(v.studentId, { view: v, seen: now });
+        }
+        for (const [sid, p] of pendingRef.current) if (now - p.seen > 5000 || recognizedRef.current.has(sid)) pendingRef.current.delete(sid);
+        setPending([...pendingRef.current].map(([sid, p]) => ({ sid, view: p.view })));
         setViews(next);
         setStats({ faces: dets.length, tiles: scanner.current.tilesPerCycle, ms: Math.round(res.ms) });
       }
@@ -288,82 +359,153 @@ export function CameraClient() {
 
   if (!lesson) return <EmptyState icon={ScanFace} title={t("Dars topilmadi")} />;
 
+  const shown = demo ? students.map((s) => student(s.id) ?? s) : students;
   const present = students.filter((s) => recognized.has(s.id));
   const missing = students.filter((s) => !recognized.has(s.id));
   const confirmedId = dialog?.type === "confirmed" ? dialog.view.studentId : undefined;
   const confirmedRec = confirmedId ? recognized.get(confirmedId) : undefined;
 
-  const report = (
-    <ReportPanel
-      students={students}
-      recognized={recognized}
-      onToggle={toggleManual}
-      present={present.length}
-      lessonStart={lesson.start}
-      note={enrolled > 0 && enrolled < students.length ? t("Yuz namunasi bor: {n}/{total}. Qolganlarini ro'yxatdan \"keldi\" deb belgilang.", { n: enrolled, total: students.length }) : undefined}
-    />
+  const recent = [...recognized].sort((x, y) => y[1].at - x[1].at).slice(0, 4);
+  const pendingList = pending.filter((p) => !recognized.has(p.sid));
+  const acceptPending = (p: { sid: string; view: FaceView }) => {
+    confirm(p.sid, p.view, p.view.score, true);
+    pendingRef.current.delete(p.sid);
+    setPending((list) => list.filter((x) => x.sid !== p.sid));
+  };
+  const note = enrolled > 0 && enrolled < students.length
+    ? t("Yuz namunasi bor: {n}/{total}. Qolganlarini ro'yxatdan \"keldi\" deb belgilang.", { n: enrolled, total: students.length })
+    : undefined;
+  const finishBtn = (
+    <button type="button" className={cx(btn.primary, "h-11 shrink-0")} onClick={() => setFinish(true)}>
+      <ListChecks size={19} aria-hidden /> {t("Yakunlash")}
+    </button>
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
-      <header className="flex items-center gap-3 px-3 pt-[max(env(safe-area-inset-top),10px)] pb-2 landscape:max-lg:pt-1.5 landscape:max-lg:pb-1.5">
-        <Link href={`/teacher/lesson/${lesson.id}`} className="flex size-11 items-center justify-center rounded-full hover:bg-white/10" aria-label={t("Orqaga")}>
-          <ChevronLeft size={26} />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[17px] font-bold">{app.schoolClass(lesson.classId)?.name} · {lesson.subject}</div>
-          <div className="truncate text-xs text-white/60">
-            {status === "ready" ? t("Jonli kuzatuv · {f} yuz · {k} bo'lak/sikl", { f: stats.faces, k: stats.tiles + 1 }) : t("Yuz tanish modeli yuklanmoqda…")}
+    <div className="fixed inset-0 z-50 overflow-hidden bg-black text-white">
+      {/* Kamera butun ekranni egallaydi */}
+      <div className="absolute inset-0 landscape:right-[300px] lg:right-[340px]">
+      <CameraStage ref={stage} fit={demo ? "contain" : "cover"} videoSrc={demo?.src} onZoom={() => scanner.current.reset()}
+        controlsTop="calc(max(env(safe-area-inset-top), 10px) + 64px)"
+        zoomBottom={side ? undefined : sheetOpen ? "calc(62dvh + 12px)" : "calc(max(env(safe-area-inset-bottom), 10px) + 158px)"}
+        className="size-full">
+        {status === "loading" && (
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 flex justify-center">
+            <span className="rounded-full bg-black/60 px-3 py-1.5 text-sm">{t("Yuz tanish modeli yuklanmoqda…")}</span>
+          </div>
+        )}
+        {status === "error" && (
+          <div className="pointer-events-none absolute inset-x-6 top-1/3 rounded-xl bg-red-700/80 p-3 text-sm">
+            {t("Yuz tanish ishga tushmadi: {e}. Yo'qlama orqali davom eting.", { e: errorText })}
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-0">
+          {views.map((v) => (
+            <FaceCircle key={v.track.id} view={v} name={v.studentId ? shortName(student(v.studentId)?.name) : undefined} onTap={() => openFor(v)} />
+          ))}
+        </div>
+      </CameraStage>
+      </div>
+
+      {/* Ustki panel: orqaga, dars, hisob */}
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/75 via-black/40 to-transparent px-3 pt-[max(env(safe-area-inset-top),10px)] pb-6 landscape:right-[300px] lg:right-[340px]">
+        <div className="flex items-center gap-2.5">
+          <Link href={`/teacher/lesson/${lesson.id}`} aria-label={t("Orqaga")}
+            className="pointer-events-auto flex h-11 shrink-0 items-center gap-1 rounded-full bg-black/55 pr-3.5 pl-2 text-sm font-semibold backdrop-blur hover:bg-black/70">
+            <ChevronLeft size={24} aria-hidden /> {t("Orqaga")}
+          </Link>
+          <div className="min-w-0 flex-1 [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]">
+            <div className="truncate text-[15px] font-bold">{app.schoolClass(lesson.classId)?.name} · {lesson.subject}</div>
+            <div className="truncate text-[11px] text-white/75">
+              {status === "ready" ? t("Jonli kuzatuv · {f} yuz · {k} bo'lak/sikl", { f: stats.faces, k: stats.tiles + 1 }) : t("Yuz tanish modeli yuklanmoqda…")}
+            </div>
+          </div>
+          <div className="tabular shrink-0 rounded-full bg-emerald-500/85 px-3 py-1 text-lg font-bold text-white backdrop-blur" aria-live="polite">
+            {present.length}<span className="text-white/75">/{students.length}</span>
           </div>
         </div>
-        <div className="tabular rounded-full bg-emerald-500/20 px-3 py-1 text-lg font-bold text-emerald-300" aria-live="polite">
-          {present.length}<span className="text-white/60">/{students.length}</span>
-        </div>
+        {app.mode === "local" && (
+          <div className="mt-2 flex">
+            {demo ? (
+              <span className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-sky-600/85 px-3 py-1.5 text-xs font-semibold backdrop-blur">
+                <Film size={14} aria-hidden /> {t("Demo video: sun'iy yuzlar")}
+                <button type="button" onClick={() => location.reload()} className="ml-1 underline">{t("Kameraga qaytish")}</button>
+              </span>
+            ) : (
+              <button type="button" disabled={demoLoading} onClick={startDemo}
+                className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-sky-600/85 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-sky-600">
+                <Film size={14} aria-hidden /> {demoLoading ? t("Yuklanmoqda…") : t("Demo videoda ko'rish")}
+              </button>
+            )}
+          </div>
+        )}
+        {(portraitHint || (enrolled === 0 && !warnClosed)) && (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {enrolled === 0 && !warnClosed && (
+              <button type="button" onClick={() => setWarnClosed(true)}
+                className="pointer-events-auto flex items-start gap-2 rounded-xl bg-amber-600/85 p-2.5 text-left text-[12px] leading-snug backdrop-blur">
+                <span className="flex-1">{t("Sinfda hech kimning yuz namunasi yo'q. Avval \"Sinflar\" bo'limida yuzlarni ro'yxatga oling. Hozircha doirani bosib o'quvchini qo'lda tanlashingiz mumkin.")}</span>
+                <X size={15} className="mt-0.5 shrink-0" aria-hidden />
+              </button>
+            )}
+            {portraitHint && (
+              <button type="button" onClick={() => setPortraitHint(false)}
+                className="pointer-events-auto flex items-center gap-2 self-start rounded-full bg-black/55 px-3 py-1.5 text-left text-xs text-white/85 backdrop-blur">
+                <Smartphone size={15} className="shrink-0 rotate-90" aria-hidden />
+                {t("Butun sinf sig'ishi uchun telefonni yotqizing")}
+                <X size={14} aria-hidden />
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
-      {portraitHint && (
-        <button type="button" onClick={() => setPortraitHint(false)}
-          className="mx-3 mb-2 flex items-center gap-2 rounded-lg bg-white/8 px-3 py-1.5 text-left text-xs text-white/80">
-          <Smartphone size={15} className="shrink-0 rotate-90" aria-hidden />
-          <span className="flex-1">{t("Butun sinf sig'ishi uchun telefonni yotqizing")}</span>
-          <X size={14} aria-hidden />
+      {/* Telefon: pastdan chiquvchi hisobot paneli */}
+      <section aria-label={t("Davomat hisoboti")}
+        className={cx("absolute inset-x-0 bottom-0 z-20 flex flex-col rounded-t-3xl bg-[#11152a]/95 backdrop-blur landscape:hidden lg:hidden",
+          sheetOpen ? "h-[62dvh]" : "")}>
+        <button type="button" onClick={() => setSheetOpen(!sheetOpen)} aria-expanded={sheetOpen}
+          className="flex w-full flex-col items-center px-4 pt-2 pb-1.5" aria-label={sheetOpen ? t("Ro'yxatni yopish") : t("Ro'yxatni ochish")}>
+          <span className="h-1 w-10 rounded-full bg-white/30" aria-hidden />
+          <span className="mt-2 flex w-full items-center gap-3 text-left">
+            <span className="tabular text-sm font-semibold text-emerald-400">{t("Keldi: {n}", { n: present.length })}</span>
+            <span className="tabular text-sm text-white/65">{t("Aniqlanmagan: {n}", { n: missing.length })}</span>
+            {pendingList.length > 0 && <span className="tabular rounded-full bg-amber-400 px-2 text-xs font-bold text-black">{pendingList.length}?</span>}
+            <span className="ml-auto text-white/70">{sheetOpen ? <ChevronDown size={20} aria-hidden /> : <ChevronUp size={20} aria-hidden />}</span>
+          </span>
         </button>
-      )}
-      {enrolled === 0 && (
-        <div className="mx-3 mb-2 rounded-xl bg-amber-600/25 p-2.5 text-[12.5px] leading-snug">
-          {t("Sinfda hech kimning yuz namunasi yo'q. Avval \"Sinflar\" bo'limida yuzlarni ro'yxatga oling. Hozircha doirani bosib o'quvchini qo'lda tanlashingiz mumkin.")}
-        </div>
-      )}
-
-      <div className="flex min-h-0 flex-1 gap-3 px-3 pb-[max(env(safe-area-inset-bottom),10px)] portrait:max-lg:flex-col">
-        <CameraStage ref={stage} fit="contain" onZoom={() => scanner.current.reset()}
-          className="min-h-0 flex-1 rounded-2xl portrait:max-lg:aspect-video portrait:max-lg:flex-none">
-          {status === "loading" && (
-            <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-              <span className="rounded-full bg-black/60 px-3 py-1.5 text-sm">{t("Yuz tanish modeli yuklanmoqda…")}</span>
-            </div>
-          )}
-          {status === "error" && (
-            <div className="pointer-events-none absolute inset-x-6 top-3 rounded-xl bg-red-700/80 p-3 text-sm">
-              {t("Yuz tanish ishga tushmadi: {e}. Yo'qlama orqali davom eting.", { e: errorText })}
-            </div>
-          )}
-          <div className="pointer-events-none absolute inset-0">
-            {views.map((v) => (
-              <FaceCircle key={v.track.id} view={v} name={v.studentId ? shortName(student(v.studentId)?.name) : undefined} onTap={() => openFor(v)} />
+        {sheetOpen ? (
+          <ReportPanel students={shown} recognized={recognized} onToggle={toggleManual} pending={pendingList} onAccept={acceptPending}
+            present={present.length} lessonStart={lesson.start} note={note} compactHeader />
+        ) : (
+          <div className="flex min-h-[40px] items-center gap-1.5 overflow-x-auto px-4 pb-1">
+            {pendingList.map((p) => (
+              <button key={p.sid} type="button" onClick={() => acceptPending(p)}
+                className="flex shrink-0 items-center gap-1 rounded-full bg-amber-400 px-2.5 py-1 text-xs font-semibold text-black">
+                <UserCheck size={13} aria-hidden /> {shortName(student(p.sid)?.name)}?
+              </button>
             ))}
+            {recent.map(([sid]) => (
+              <span key={sid} className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-300">
+                <Check size={13} aria-hidden /> {shortName(student(sid)?.name)}
+              </span>
+            ))}
+            {recent.length === 0 && pendingList.length === 0 && (
+              <span className="text-xs text-white/50">{t("Tanilgan o'quvchilar shu yerda avtomatik \"keldi\" bo'ladi")}</span>
+            )}
           </div>
-        </CameraStage>
-        {/* Hisobot: keng ekranda yonida, telefon tik turganda kamera ostida */}
-        <aside className="flex w-72 shrink-0 flex-col overflow-hidden rounded-2xl bg-white/[0.06] landscape:max-lg:w-64 portrait:max-lg:min-h-0 portrait:max-lg:w-auto portrait:max-lg:flex-1">
-          {report}
-          <div className="p-3 pt-0">
-            <button type="button" className={cx(btn.primary, "h-11 w-full")} onClick={() => setFinish(true)}>
-              <ListChecks size={19} aria-hidden /> {t("Yakunlash")}
-            </button>
-          </div>
-        </aside>
-      </div>
+        )}
+        <div className="flex gap-2 px-3 pt-1.5 pb-[max(env(safe-area-inset-bottom),10px)]">
+          <div className="flex-1 [&>button]:w-full">{finishBtn}</div>
+        </div>
+      </section>
+
+      {/* Kompyuter/planshet: o'ng tomonda doimiy hisobot */}
+      <aside className="absolute inset-y-0 right-0 hidden w-[300px] flex-col border-l border-white/10 bg-[#11152a] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] landscape:flex lg:flex lg:w-[340px]">
+        <ReportPanel students={shown} recognized={recognized} onToggle={toggleManual} pending={pendingList} onAccept={acceptPending}
+          present={present.length} lessonStart={lesson.start} note={note} />
+        <div className="p-3 pt-0 [&>button]:w-full">{finishBtn}</div>
+      </aside>
 
       <Modal open={finish} onClose={() => setFinish(false)} title={t("Davomatni yakunlash")}
         footer={<>
@@ -409,7 +551,7 @@ export function CameraClient() {
             <EmptyState icon={ScanFace} title={t("Barcha o'quvchilar belgilangan")} />
           ) : (
             <div className="flex flex-col">
-              {missing.map((s) => (
+              {missing.map((s0) => student(s0.id) ?? s0).map((s) => (
                 <button key={s.id} type="button" className="flex items-center gap-3 rounded-xl p-2.5 text-left hover:bg-surface-2"
                   onClick={() => { confirm(s.id, dialog.view, undefined, true); closeDialog(); }}>
                   <Avatar name={s.name} image={s.facePhoto} />
@@ -450,22 +592,29 @@ export function CameraClient() {
 
 /** Kuzatuv davomida yig'ilayotgan davomat hisoboti. */
 function ReportPanel({
-  students, recognized, onToggle, present, lessonStart, note,
+  students, recognized, onToggle, pending, onAccept, present, lessonStart, note, compactHeader,
 }: {
   students: Student[];
   recognized: Map<string, Recognized>;
   onToggle: (sid: string) => void;
+  /** Sariq: tanish ishonchi past, o'qituvchi bir bosishda tasdiqlaydi. */
+  pending: { sid: string; view: FaceView }[];
+  onAccept: (p: { sid: string; view: FaceView }) => void;
   present: number;
   lessonStart: string;
   note?: string;
+  /** Telefon paneli: sarlavha va hisob yuqoridagi tugmada ko'rsatilgan. */
+  compactHeader?: boolean;
 }) {
   const t = useT();
-  const missing = students.filter((s) => !recognized.has(s.id));
+  const pendingIds = new Set(pending.map((p) => p.sid));
+  const missing = students.filter((s) => !recognized.has(s.id) && !pendingIds.has(s.id));
   const got = students.filter((s) => recognized.has(s.id)).sort((a, b) => recognized.get(b.id)!.at - recognized.get(a.id)!.at);
   const pct = students.length ? present / students.length : 0;
   return (
-    <div className="flex max-h-[70dvh] min-h-0 flex-1 flex-col lg:max-h-none">
-      <div className="px-4 pt-3 pb-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className={cx("px-4 pt-3 pb-3", compactHeader && "pt-1 pb-2")}>
+        {!compactHeader && (<>
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-semibold">{t("Davomat hisoboti")}</span>
           <span className="tabular text-xs opacity-70">{t("dars {t}", { t: lessonStart })}</span>
@@ -477,9 +626,35 @@ function ReportPanel({
           <span className="font-semibold text-emerald-500">{t("Keldi: {n}", { n: present })}</span>
           <span className="opacity-70">{t("Aniqlanmagan: {n}", { n: missing.length })}</span>
         </div>
+        </>)}
+        {compactHeader && (
+          <div className="h-1.5 overflow-hidden rounded-full bg-current/15">
+            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct * 100}%` }} />
+          </div>
+        )}
         {note && <p className="mt-2 rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-[11.5px] leading-snug">{note}</p>}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3">
+        {pending.length > 0 && (
+          <>
+            <div className="px-2 pt-1 pb-1 text-[11px] font-semibold tracking-wide text-amber-300 uppercase">{t("Tasdiqlang")}</div>
+            {pending.map((p) => {
+              const s = students.find((x) => x.id === p.sid);
+              if (!s) return null;
+              return (
+                <button key={p.sid} type="button" onClick={() => onAccept(p)}
+                  className="flex w-full items-center gap-2.5 rounded-lg bg-amber-400/10 px-2 py-1.5 text-left text-sm hover:bg-amber-400/20">
+                  <span className="rounded-full bg-amber-400 p-0.5"><Avatar name={s.name} image={s.facePhoto} size={28} /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{s.name}?</span>
+                    <span className="tabular block text-[11px] opacity-60">{t("Taxminiy moslik: {p}%", { p: Math.round((p.view.score ?? 0) * 100) })}</span>
+                  </span>
+                  <span className="flex items-center gap-1 rounded-md bg-amber-400 px-1.5 py-0.5 text-[11px] font-semibold text-black"><UserCheck size={12} aria-hidden />{t("keldi")}</span>
+                </button>
+              );
+            })}
+          </>
+        )}
         {missing.length > 0 && (
           <>
             <div className="px-2 pt-1 pb-1 text-[11px] font-semibold tracking-wide uppercase opacity-60">{t("Aniqlanmagan")}</div>

@@ -50,7 +50,7 @@ export interface CommandMap {
   "notification.read": { id?: string; all?: boolean };
   "announcement.send": { classId?: string; title: string; body: string };
   "consent.set": { studentId: string; consent: boolean };
-  "face.enroll": { studentId: string; templates: number[][]; photo?: string };
+  "face.enroll": { studentId: string; templates: number[][]; photo?: string; model?: string };
   "student.save": {
     id?: string;
     name: string;
@@ -69,6 +69,8 @@ export interface CommandMap {
   "lesson.delete": { id: string };
   "term.save": { id: string; name: string; startDay: string; endDay: string };
   "settings.save": { settings: InstitutionSettings };
+  /** NVR integratsiyasi: yoqish/o'chirish, yangi kalit xeshi (kalit brauzerda yaratiladi va bir marta ko'rsatiladi). */
+  "nvr.configure": { enabled: boolean; keyHash?: string; keyPrefix?: string; revoke?: boolean };
   "institution.save": { id?: string; name: string; type: InstitutionType; city: string; director?: PersonInput };
   "institution.setActive": { id: string; active: boolean };
 }

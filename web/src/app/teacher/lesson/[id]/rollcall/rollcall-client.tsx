@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCheck, ChevronLeft, ChevronRight, List, ScanFace, User } from "lucide-react";
-import { arrivalStatus, isPresent, type AttendanceStatus, type Student } from "@edunazorat/shared";
+import { isPresent, type AttendanceStatus, type Student } from "@edunazorat/shared";
 
 import { useRun, useToast } from "@/components/providers";
 import { useQueryParam } from "@/components/query";
 import { useRouteParam } from "@/components/route-param";
 import { PageBody, PageHeader } from "@/components/shell";
-import { ATT_TONE, Avatar, btn, Card, cx, EmptyState, Modal, Pill, toneSoft, toneSolid } from "@/components/ui";
+import { ATT_TONE, Avatar, btn, Card, cx, EmptyState, Modal, Pill, toneSolid } from "@/components/ui";
 import { clearAttendanceDraft, getAttendanceDraft, type PendingMark } from "@/lib/attendance-draft";
 import { useApp } from "@/lib/data/store";
 import { useT } from "@/lib/i18n/react";
@@ -25,7 +25,6 @@ export function RollCallClient() {
   const lessonId = useRouteParam("id");
   const day = useQueryParam("day") ?? app.today;
   const lesson = app.lesson(lessonId);
-  const late = app.myInstitution?.settings.lateAfterMinutes ?? 10;
 
   // Bir martalik boshlang'ich holat: shu darsdagi yozuvlar + kamera natijalari.
   const [init] = useState(() => {
@@ -52,23 +51,28 @@ export function RollCallClient() {
   if (!lesson) return <EmptyState icon={User} title={t("Dars topilmadi")} />;
   const markedCount = students.filter((s) => marks[s.id]).length;
   const faceCount = Object.values(marks).filter((m) => m.source === "face").length;
-  // "Keldi" bosilganda: bugun bo'lsa vaqtga qarab kechikkan bo'lishi mumkin.
-  const presentNow = (): AttendanceStatus => (day === app.today ? arrivalStatus(lesson, day, app.now, late) : "present");
 
   const mark = (s: Student, status: AttendanceStatus) => {
-    const next = { ...marks, [s.id]: { ...(marks[s.id] ?? { source: "manual" as const }), status } };
+    const prev = marks[s.id];
+    // Qo'lda o'zgartirilsa manba "qo'lda" bo'ladi; kelmagan o'quvchiga yuz kesimi yuborilmaydi
+    const changed = !prev || prev.status !== status;
+    const keepFace = prev && !changed;
+    const snapshot = isPresent(status) ? prev?.snapshot : undefined;
+    const next = { ...marks, [s.id]: keepFace ? prev : { status, source: "manual" as const, snapshot } };
     setMarks(next);
-    if (oneByOne) {
-      for (let i = 1; i <= students.length; i++) {
+    if (oneByOne && s.id === students[index]?.id) {
+      // Keyingi belgilanmaganga; hammasi belgilangan bo'lsa (tuzatish) shunchaki keyingisiga
+      for (let i = 1; i < students.length; i++) {
         const k = (index + i) % students.length;
         if (!next[students[k].id]) return setIndex(k);
       }
+      if (index < students.length - 1) setIndex(index + 1);
     }
   };
 
   const allPresent = () => {
     const next = { ...marks };
-    for (const s of students) if (!next[s.id]) next[s.id] = { status: presentNow(), source: "manual" };
+    for (const s of students) if (!next[s.id]) next[s.id] = { status: "present", source: "manual" };
     setMarks(next);
   };
 
@@ -137,8 +141,9 @@ export function RollCallClient() {
             </div>
             <div className="mt-8 grid grid-cols-2 gap-3">
               {STATUSES.map((st) => (
-                <button key={st} type="button" onClick={() => mark(s, st === "present" ? presentNow() : st)}
-                  className={cx("h-16 rounded-2xl text-lg font-bold transition", m?.status === st ? toneSolid(ATT_TONE[st]) : toneSoft(ATT_TONE[st]))}>
+                <button key={st} type="button" aria-pressed={m?.status === st} onClick={() => mark(s, st)}
+                  className={cx("h-16 rounded-2xl text-lg font-bold transition",
+                    m?.status === st ? cx(toneSolid(ATT_TONE[st]), "shadow-sm") : "bg-surface-2 text-muted hover:text-ink active:brightness-95")}>
                   {statusLabel(st)}
                 </button>
               ))}
@@ -161,8 +166,8 @@ export function RollCallClient() {
                 </div>
                 <div className="mt-2 grid grid-cols-4 gap-1.5">
                   {STATUSES.map((x) => (
-                    <button key={x} type="button" aria-pressed={marks[st.id]?.status === x} onClick={() => mark(st, x === "present" ? presentNow() : x)}
-                      className={cx("rounded-lg border px-1 py-1.5 text-xs", marks[st.id]?.status === x ? cx("border-transparent font-bold", toneSoft(ATT_TONE[x])) : "border-line")}>
+                    <button key={x} type="button" aria-pressed={marks[st.id]?.status === x} onClick={() => mark(st, x)}
+                      className={cx("rounded-lg px-1 py-1.5 text-xs transition", marks[st.id]?.status === x ? cx("font-bold", toneSolid(ATT_TONE[x])) : "bg-surface-2 text-muted hover:text-ink")}>
                       {statusLabel(x)}
                     </button>
                   ))}

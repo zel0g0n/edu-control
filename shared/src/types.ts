@@ -14,7 +14,12 @@ export interface PaymentProviderSettings {
   paymeAccountField?: string;
 }
 
+/** Joriy yuz modeli: namunalar va chegaralar shu model uchun (web/lib/face/config.ts). */
+export const FACE_MODEL_ID = "ghostfacenet-w13s1-v1";
+
 export interface InstitutionSettings {
+  /** Chegaralar qaysi yuz modeli uchun sozlangan (boshqa model bo'lsa standart qiymatlar ishlatiladi). */
+  faceModel?: string;
   /** Yuz tanish: shundan yuqori o'xshashlik "tanildi". */
   matchThreshold: number;
   /** Shu oraliqda "tekshiring". */
@@ -26,11 +31,22 @@ export interface InstitutionSettings {
   /** Oylik to'lov muddati: oyning shu kuni. */
   paymentDueDay: number;
   payments: PaymentProviderSettings;
+  /** NVR integratsiyasi (ixtiyoriy). Kalitning o'zi saqlanmaydi, faqat SHA-256 xeshi. */
+  nvr?: NvrSettings;
+}
+
+export interface NvrSettings {
+  enabled: boolean;
+  keyHash?: string;
+  /** Kalitni tanish uchun boshi: "edn_3f9a…". */
+  keyPrefix?: string;
+  keyCreatedAt?: number;
 }
 
 export const DEFAULT_SETTINGS: InstitutionSettings = {
-  matchThreshold: 0.55,
-  reviewThreshold: 0.4,
+  faceModel: FACE_MODEL_ID,
+  matchThreshold: 0.4,
+  reviewThreshold: 0.28,
   faceLiveness: true,
   lateAfterMinutes: 10,
   paymentDueDay: 10,
@@ -82,8 +98,10 @@ export interface Student {
   birthDay?: string;
   archived: boolean;
   parentConsent: boolean;
-  /** MobileFaceNet namunalari (192 o'lcham). Rasm emas. */
+  /** Yuz namunalari (raqamli vektorlar). Rasm emas. */
   faceTemplates: number[][];
+  /** Namunalar qaysi model bilan olingan (model almashsa qayta ro'yxatga olinadi). */
+  faceModel?: string;
   /** Ro'yxatga olishdagi kichik yuz kesimi (data URL). */
   facePhoto?: string;
 }
@@ -126,7 +144,8 @@ export interface Grade {
 }
 
 export type AttendanceStatus = "present" | "late" | "absent" | "excused";
-export type AttendanceSource = "manual" | "face";
+/** "nvr": maktab kameralari tizimi (integratsiya) belgilagan. */
+export type AttendanceSource = "manual" | "face" | "nvr";
 
 /** Bitta o'quvchining bitta darsdagi davomati. */
 export interface AttendanceRecord {

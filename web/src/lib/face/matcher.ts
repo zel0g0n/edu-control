@@ -28,6 +28,23 @@ export function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
   return s;
 }
 
+/** Joriy model bilan olingan namunalar (boshqa model namunalari solishtirib bo'lmaydi). */
+export function usableTemplates(s: { faceTemplates: number[][]; faceModel?: string }): number[][] {
+  const model = s.faceModel ?? (s.faceTemplates[0]?.length === 192 ? "mobilefacenet-v1" : "?");
+  if (model !== FACE.modelId) return [];
+  return s.faceTemplates.filter((t) => t.length === FACE.embeddingLength);
+}
+
+/** Namunasi bor, lekin eski model bilan: qayta ro'yxatga olish kerak. */
+export function needsReenroll(s: { faceTemplates: number[][]; faceModel?: string }): boolean {
+  return s.faceTemplates.length > 0 && usableTemplates(s).length === 0;
+}
+
+/** Keskinlikdan o'rtacha uchun og'irlik (0.25..1). */
+export function qualityWeight(sharpness: number): number {
+  return Math.max(0.25, Math.min(1, sharpness / FACE.sharpRef));
+}
+
 /** Sinf o'quvchilarining yuz namunalari. */
 export class FaceGallery {
   constructor(readonly templates: Record<string, ArrayLike<number>[]>, readonly thresholds: Thresholds = DEFAULT_THRESHOLDS) {}
@@ -85,7 +102,7 @@ export class Track {
    * Bir necha kadrdagi namunalarning o'rtachasi: uzoqdagi kichik yuzlarda
    * bitta kadr shovqinli, o'rtacha esa barqaror (tanish tezlashadi va aniqlashadi).
    */
-  addEmbedding(e: Float32Array, maxCount = 8): Float32Array {
+  addEmbedding(e: Float32Array, maxCount = 8, weight = 1): Float32Array {
     if (!this.embSum || this.embSum.length !== e.length) {
       this.embSum = new Float32Array(e.length);
       this.embCount = 0;
@@ -94,7 +111,7 @@ export class Track {
     const keep = this.embCount >= maxCount ? (maxCount - 1) / maxCount : 1;
     let n = 0;
     for (let i = 0; i < e.length; i++) {
-      this.embSum[i] = this.embSum[i] * keep + e[i];
+      this.embSum[i] = this.embSum[i] * keep + e[i] * weight;
       n += this.embSum[i] * this.embSum[i];
     }
     this.embCount = Math.min(maxCount, this.embCount + 1);

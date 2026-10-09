@@ -67,7 +67,7 @@ export function scopeFor(db: Database, user: AppUser): Scope {
     const hwIds = new Set(db.homeworks.filter((h) => classIds.has(h.classId)).map((h) => h.id));
     const threadIds = new Set(db.threads.filter((t) => t.teacherId === user.id).map((t) => t.id));
     return {
-      institutions: when((i) => i.id === inst, (i) => ({ ...i, settings: { ...i.settings, payments: {} } })),
+      institutions: when((i) => i.id === inst, (i) => ({ ...i, settings: { ...i.settings, payments: {}, nvr: undefined } })),
       users: (u) => (u.id === user.id ? u : u.institutionId === inst && u.role === "teacher" ? publicUser(u) : parentIds.has(u.id) ? { ...u, childIds: u.childIds.filter((c) => studentIds.has(c)) } : null),
       classes: when((c) => c.institutionId === inst),
       students: when((s) => studentIds.has(s.id)),
@@ -97,7 +97,7 @@ export function scopeFor(db: Database, user: AppUser): Scope {
   const isParent = user.role === "parent";
   const threadIds = new Set(db.threads.filter((t) => isParent && t.parentId === user.id).map((t) => t.id));
   return {
-    institutions: when((i) => instIds.has(i.id), (i) => ({ ...i, settings: { ...i.settings, matchThreshold: 0, reviewThreshold: 0 } })),
+    institutions: when((i) => instIds.has(i.id), (i) => ({ ...i, settings: { ...i.settings, matchThreshold: 0, reviewThreshold: 0, nvr: undefined } })),
     users: (u) => (u.id === user.id ? u : teacherIds.has(u.id) ? publicUser(u) : null),
     classes: when((c) => classIds.has(c.id)),
     students: when((s) => childIds.has(s.id), (s) => ({ ...noFace(s), facePhoto: isParent ? s.facePhoto : undefined, parentIds: isParent ? s.parentIds : [] })),
@@ -161,5 +161,5 @@ export function isEmptyPatch(p: Patch): boolean {
  */
 export const STRUCTURAL_COMMANDS: readonly string[] = [
   "lesson.save", "lesson.delete", "class.save", "class.delete", "student.save", "student.archive",
-  "teacher.save", "teacher.setActive", "institution.save", "institution.setActive", "settings.save", "term.save",
+  "teacher.save", "teacher.setActive", "institution.save", "institution.setActive", "settings.save", "term.save", "nvr.configure",
 ];

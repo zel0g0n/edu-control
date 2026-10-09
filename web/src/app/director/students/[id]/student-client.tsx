@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
 import { fmt } from "@/lib/format";
+import { needsReenroll, usableTemplates } from "@/lib/face/matcher";
 import { useT } from "@/lib/i18n/react";
 
 export function StudentClient() {
@@ -80,7 +81,7 @@ function Info({ student: s }: { student: Student }) {
               <div className="font-semibold">{s.parentConsent ? t("Ota-ona roziligi bor") : t("Ota-ona roziligi yo'q")}</div>
               <div className="text-muted">{t("Rozilikni ota-ona o'z ilovasida beradi yoki bekor qiladi")}</div>
             </div>
-            {s.parentConsent && <Pill tone={s.faceTemplates.length ? "ok" : "warn"} icon={ScanFace}>{s.faceTemplates.length ? t("Namuna bor") : t("Namuna yo'q")}</Pill>}
+            {s.parentConsent && <Pill tone={usableTemplates(s).length ? "ok" : "warn"} icon={ScanFace}>{usableTemplates(s).length ? t("Namuna bor") : needsReenroll(s) ? t("Qayta olish kerak") : t("Namuna yo'q")}</Pill>}
           </Card>
         </Section>
       </div>
