@@ -7,6 +7,17 @@ const nextConfig: NextConfig = {
   // Dev rejimida telefondan (lokal tarmoq IP) yoki tunnel orqali ochishga ruxsat
   allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*", "*.trycloudflare.com", "*.ngrok-free.app"],
   partialPrefetching: true,
+  // Cross-origin isolation: yuz tanish WebAssembly'si bir nechta protsessor yadrosida ishlaydi
+  // (SharedArrayBuffer). "credentialless": tashqi rasm/shriftlar ishlashda davom etadi.
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+        { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+      ],
+    }];
+  },
   experimental: {
     // Mock bosqichda ilova to'liq brauzerda chiziladi (ma'lumotlar localStorage'da),
     // shuning uchun avtomatik "instant navigation" tekshiruvi o'chirilgan.

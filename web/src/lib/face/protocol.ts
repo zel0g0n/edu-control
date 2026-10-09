@@ -9,6 +9,8 @@ export type WorkerRequest =
 
 export type WorkerResponse =
   | { type: "ready" }
+  /** Modellar yuklanishi (birinchi ochilishda; keyin telefondan olinadi). */
+  | { type: "progress"; loaded: number; total: number }
   | { type: "detected"; id: number; detections: Detection[]; perRegion?: Detection[][]; ms: number }
   | { type: "embedded"; id: number; embeddings: Float32Array[]; qualities: number[] }
   | { type: "error"; id?: number; message: string };

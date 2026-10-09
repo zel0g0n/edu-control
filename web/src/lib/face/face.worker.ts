@@ -13,6 +13,37 @@ let frame: RgbaImage | null = null;
 
 const post = (msg: WorkerResponse, transfer: Transferable[] = []) => self.postMessage(msg, transfer);
 
+/** Yuklanish foizi: barcha modellar bo'yicha umumiy. */
+const progress = new Map<string, { loaded: number; total: number }>();
+function reportProgress() {
+  let loaded = 0, total = 0;
+  for (const p of progress.values()) { loaded += p.loaded; total += p.total; }
+  post({ type: "progress", loaded, total });
+}
+
+async function readWithProgress(res: Response, url: string): Promise<ArrayBuffer> {
+  // Content-Length siqilgan hajm bo'lishi mumkin: foiz taxminiy, 99% dan oshmaydi
+  const total = Number(res.headers.get("Content-Length")) || 0;
+  if (!res.body || !total) return res.arrayBuffer();
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+    progress.set(url, { loaded: Math.min(loaded, total * 0.99), total });
+    reportProgress();
+  }
+  const out = new Uint8Array(loaded);
+  let o = 0;
+  for (const c of chunks) { out.set(c, o); o += c.length; }
+  progress.set(url, { loaded: total, total });
+  reportProgress();
+  return out.buffer;
+}
+
 /** Modellar telefonda saqlanadi (Cache API): keyingi ochilishda internet sarflanmaydi. */
 const MODEL_CACHE = "edunazorat-models-v2";
 
@@ -27,7 +58,7 @@ async function fetchModel(url: string): Promise<Uint8Array> {
   }
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Model yuklanmadi: ${url} (${res.status})`);
-  const buf = await res.arrayBuffer();
+  const buf = await readWithProgress(res, url);
   try {
     await cache?.put(url, new Response(buf.slice(0), { headers: { "Content-Type": "application/octet-stream" } }));
     // Eski versiyalar keshini tozalash
@@ -44,7 +75,9 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     if (m.type === "init") {
       if (!engine) {
         ort.env.wasm.wasmPaths = m.wasmPath;
-        ort.env.wasm.numThreads = 1;
+        // Ko'p yadroli ishlash faqat cross-origin isolation bo'lsa (next.config.ts headers)
+        const cores = (self.navigator as Navigator | undefined)?.hardwareConcurrency ?? 2;
+        ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.max(1, Math.min(4, cores)) : 1;
         const [det, emb] = await Promise.all([fetchModel(m.detectorUrl), fetchModel(m.embedderUrl)]);
         engine = await FaceEngine.create(ort, det, emb);
       }

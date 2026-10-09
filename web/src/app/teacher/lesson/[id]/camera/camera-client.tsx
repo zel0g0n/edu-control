@@ -73,7 +73,8 @@ export function CameraClient() {
   /** Demo video: kamera o'rniga sun'iy yuzlardagi sinf videosi (faqat demo rejimda). */
   const [demo, setDemo] = useState<{ src: string; photos: Map<string, string> } | null>(null);
   const [demoLoading, setDemoLoading] = useState(false);
-  const livenessOn = settings?.faceLiveness !== false;
+  // Demo videodagi yuzlar tekis tasvir: jonlilik tekshiruvi ularni (to'g'ri) "rasm" deb biladi
+  const livenessOn = settings?.faceLiveness !== false && !demo;
   const tracker = useRef(new Tracker());
   /** Bitta yuz namunasi o'rtacha necha ms (qurilma tezligi). */
   const embedMs = useRef(60);
@@ -174,6 +175,9 @@ export function CameraClient() {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  const [loadPct, setLoadPct] = useState<number | null>(null);
+  useEffect(() => faceWorker.onProgress((p) => setLoadPct(Math.round(p * 100))), []);
 
   useEffect(() => {
     faceWorker.init().then(() => setStatus("ready")).catch((e: Error) => {
@@ -391,7 +395,7 @@ export function CameraClient() {
         className="size-full">
         {status === "loading" && (
           <div className="pointer-events-none absolute inset-x-0 top-1/2 flex justify-center">
-            <span className="rounded-full bg-black/60 px-3 py-1.5 text-sm">{t("Yuz tanish modeli yuklanmoqda…")}</span>
+            <span className="rounded-full bg-black/60 px-3 py-1.5 text-sm">{`${t("Yuz tanish modeli yuklanmoqda…")}${loadPct !== null && loadPct < 100 ? ` ${loadPct}%` : ""}`}</span>
           </div>
         )}
         {status === "error" && (
@@ -417,7 +421,7 @@ export function CameraClient() {
           <div className="min-w-0 flex-1 [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]">
             <div className="truncate text-[15px] font-bold">{app.schoolClass(lesson.classId)?.name} · {lesson.subject}</div>
             <div className="truncate text-[11px] text-white/75">
-              {status === "ready" ? t("Jonli kuzatuv · {f} yuz · {k} bo'lak/sikl", { f: stats.faces, k: stats.tiles + 1 }) : t("Yuz tanish modeli yuklanmoqda…")}
+              {status === "ready" ? t("Jonli kuzatuv · {f} yuz · {k} bo'lak/sikl", { f: stats.faces, k: stats.tiles + 1 }) : `${t("Yuz tanish modeli yuklanmoqda…")}${loadPct !== null && loadPct < 100 ? ` ${loadPct}%` : ""}`}
             </div>
           </div>
           <div className="tabular shrink-0 rounded-full bg-emerald-500/85 px-3 py-1 text-lg font-bold text-white backdrop-blur" aria-live="polite">

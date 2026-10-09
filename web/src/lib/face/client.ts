@@ -14,6 +14,13 @@ class FaceWorkerClient {
   private ready: Promise<void> | null = null;
   private seq = 1;
   private pending = new Map<number, Pending>();
+  private progressListeners = new Set<(p: number) => void>();
+
+  /** Model yuklanishi 0..1 (keshda bo'lsa darhol 1). */
+  onProgress(fn: (p: number) => void): () => void {
+    this.progressListeners.add(fn);
+    return () => this.progressListeners.delete(fn);
+  }
 
   init(): Promise<void> {
     if (this.ready) return this.ready;
@@ -23,6 +30,11 @@ class FaceWorkerClient {
       w.onmessage = (e: MessageEvent<WorkerResponse>) => {
         const m = e.data;
         if (m.type === "ready") return resolve();
+        if (m.type === "progress") {
+          const p = m.total ? m.loaded / m.total : 0;
+          this.progressListeners.forEach((f) => f(p));
+          return;
+        }
         if (m.type === "error" && m.id === undefined) {
           this.ready = null;
           this.worker = null;

@@ -38,9 +38,16 @@ export class SceneScanner {
     }
     if (this.grid.length === 0) return { regions: [], indices: [] };
     const n = Math.min(this.tilesPerCycle, this.grid.length);
-    const indices: number[] = [];
-    for (let k = 0; k < n; k++) indices.push((this.cursor + k) % this.grid.length);
-    this.cursor = (this.cursor + n) % this.grid.length;
+    // Ustuvorlik: yuz topilgan bo'laklar tez-tez, bo'shlari (shift, doska) kamroq tekshiriladi.
+    // Hech bir bo'lak unutilmaydi: kutish vaqti oshgani sari navbati keladi.
+    const score = (i: number) => {
+      const c = this.cache.get(i);
+      const age = c ? this.cycle - c.cycle : this.grid.length + 1;
+      const hasFaces = !c || c.dets.length > 0;
+      return age * (hasFaces ? 2 : 1) + (i === this.cursor ? 0.5 : 0);
+    };
+    const indices = [...this.grid.keys()].sort((a, b) => score(b) - score(a)).slice(0, n);
+    this.cursor = (this.cursor + 1) % this.grid.length;
     return { regions: indices.map((i) => this.grid[i]), indices };
   }
 
