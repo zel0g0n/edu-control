@@ -69,6 +69,10 @@ async function fetchModel(url: string): Promise<Uint8Array> {
   return new Uint8Array(buf);
 }
 
+// Ichki (ORT) oqimlardagi kutilmagan xatolar ham sababi bilan sahifaga yetib borsin
+self.addEventListener("error", (ev) => post({ type: "error", message: `${ev.message || "Worker xatosi"}${ev.filename ? ` (${ev.filename.split("/").pop()}:${ev.lineno})` : ""}` }));
+self.addEventListener("unhandledrejection", (ev) => post({ type: "error", message: String((ev.reason as Error)?.message ?? ev.reason) }));
+
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   const m = e.data;
   try {
@@ -77,9 +81,14 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
         ort.env.wasm.wasmPaths = m.wasmPath;
         // Ko'p yadroli ishlash faqat cross-origin isolation bo'lsa (next.config.ts headers)
         const cores = (self.navigator as Navigator | undefined)?.hardwareConcurrency ?? 2;
-        ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.max(1, Math.min(4, cores)) : 1;
+        ort.env.wasm.numThreads = m.threads && self.crossOriginIsolated ? Math.max(1, Math.min(4, cores)) : 1;
         const [det, emb] = await Promise.all([fetchModel(m.detectorUrl), fetchModel(m.embedderUrl)]);
-        engine = await FaceEngine.create(ort, det, emb);
+        // Ko'p oqimli ishga tushish ba'zi qurilmalarda osilib qoladi: 25 soniyada tayyor bo'lmasa xato
+        // (sahifa bir oqimli zaxira rejimga o'tadi)
+        engine = await Promise.race([
+          FaceEngine.create(ort, det, emb),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error("WebAssembly ishga tushmadi (vaqt tugadi)")), 25_000)),
+        ]);
       }
       post({ type: "ready" });
     } else if (m.type === "detect") {

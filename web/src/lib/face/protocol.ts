@@ -3,7 +3,8 @@ import type { Region } from "./tiles";
 import type { Detection } from "./yunet";
 
 export type WorkerRequest =
-  | { type: "init"; wasmPath: string; detectorUrl: string; embedderUrl: string }
+  /** threads: false — bir oqimli zaxira rejim (ko'p oqim ishlamagan qurilmalar uchun). */
+  | { type: "init"; wasmPath: string; detectorUrl: string; embedderUrl: string; threads: boolean }
   | { type: "detect"; id: number; width: number; height: number; buffer: ArrayBuffer; regions?: Region[]; full?: boolean }
   | { type: "embed"; id: number; kps: Point[][] };
 

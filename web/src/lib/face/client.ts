@@ -6,6 +6,8 @@ import type { WorkerRequest, WorkerResponse } from "./protocol";
 import type { Region } from "./tiles";
 import type { Detection } from "./yunet";
 
+const SINGLE_KEY = "edunazorat-face-single-thread";
+
 type Pending = { resolve: (v: WorkerResponse) => void; reject: (e: Error) => void };
 
 /** Yuz tanish Worker'i bilan ishlash (bitta nusxa, sahifalar orasida qayta ishlatiladi). */
@@ -22,24 +24,60 @@ class FaceWorkerClient {
     return () => this.progressListeners.delete(fn);
   }
 
+  /** Ishga tushirish: avval ko'p oqimli (tez), ishlamasa bir oqimli zaxira rejim. */
   init(): Promise<void> {
     if (this.ready) return this.ready;
-    this.ready = new Promise<void>((resolve, reject) => {
+    // Avval ko'p oqim ishlamagan qurilmada vaqt yo'qotilmasin
+    let single = false;
+    try {
+      single = localStorage.getItem(SINGLE_KEY) === "1";
+    } catch {
+      /* saqlash yo'q */
+    }
+    this.ready = this.start(!single).catch((first: Error) => {
+      if (single) throw first;
+      console.warn("Yuz tanish: ko'p oqimli rejim ishlamadi, bir oqimga o'tilmoqda", first);
+      return this.start(false).then(() => {
+        try {
+          localStorage.setItem(SINGLE_KEY, "1");
+        } catch {
+          /* saqlash yo'q */
+        }
+      }).catch((second: Error) => {
+        this.ready = null;
+        throw new Error(second.message === first.message ? second.message : `${second.message}; ${first.message}`);
+      });
+    });
+    return this.ready;
+  }
+
+  private start(threads: boolean): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const fail = (message: string) => {
+        if (settled) return;
+        settled = true;
+        this.worker = null;
+        w.terminate();
+        reject(new Error(message));
+      };
       const w = new Worker(new URL("./face.worker.ts", import.meta.url), { type: "module" });
       this.worker = w;
       w.onmessage = (e: MessageEvent<WorkerResponse>) => {
         const m = e.data;
-        if (m.type === "ready") return resolve();
+        if (m.type === "ready") {
+          settled = true;
+          return resolve();
+        }
         if (m.type === "progress") {
           const p = m.total ? m.loaded / m.total : 0;
           this.progressListeners.forEach((f) => f(p));
           return;
         }
         if (m.type === "error" && m.id === undefined) {
-          this.ready = null;
-          this.worker = null;
-          w.terminate();
-          return reject(new Error(m.message));
+          if (!settled) return fail(m.message);
+          console.warn("Yuz tanish:", m.message);
+          return;
         }
         if ("id" in m && m.id !== undefined) {
           const p = this.pending.get(m.id);
@@ -50,19 +88,22 @@ class FaceWorkerClient {
         }
       };
       w.onerror = (e) => {
-        this.ready = null;
-        this.worker = null;
-        reject(new Error(e.message || "Worker xatosi"));
+        e.preventDefault();
+        const msg = `${e.message || "Worker xatosi"}${e.filename ? ` (${e.filename.split("/").pop()}:${e.lineno})` : ""}`;
+        if (!settled) return fail(msg);
+        console.warn("Yuz tanish:", msg);
       };
+      // Model yuklanishi sekin internetda uzoq: 3 daqiqadan keyin to'xtatiladi
+      setTimeout(() => fail("Yuz tanish modeli 3 daqiqada yuklanmadi"), 180_000);
       const msg: WorkerRequest = {
         type: "init",
         wasmPath: FACE.ortWasmPath,
         detectorUrl: FACE.detectorUrl,
         embedderUrl: FACE.embedderUrl,
+        threads,
       };
       w.postMessage(msg);
     });
-    return this.ready;
   }
 
   private call(msg: WorkerRequest & { id: number }, transfer: Transferable[] = []): Promise<WorkerResponse> {
