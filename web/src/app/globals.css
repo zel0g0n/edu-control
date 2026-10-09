@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+/*
+ * EduNazorat: "siyoh va daftar". Iliq qog'oz foni, siyoh-ko'k asosiy rang,
+ * daftar hoshiyasidagi qizil chiziq aksent sifatida. Baholar rangi
+ * O'zbekiston maktab an'anasi: 5 yashil, 4 ko'k, 3 sariq, 2 qizil.
+ */
+:root {
+  --bg: #f5f4ef;
+  --surface: #ffffff;
+  --surface-2: #eeede6;
+  --ink: #151a2d;
+  --muted: #5d6478;
+  --line: #e2e0d6;
+  --primary: #2a44a8;
+  --primary-ink: #1d2f7a;
+  --primary-soft: #e4e9f8;
+  --margin: #d24b3f;
+  --ok: #1d8049;
+  --info: #2367b0;
+  --warn: #a8640a;
+  --bad: #c0372d;
+  --slate: #5d6478;
+  /* Kompyuterdagi chap panel (doim to'q) */
+  --nav: #141b34;
+  --nav-2: #1d2647;
+  --nav-ink: #c6cce2;
+  --nav-active: #f5f4ef;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1221;
+    --surface: #161a2c;
+    --surface-2: #1d2238;
+    --ink: #e7e9f1;
+    --muted: #9ba2b9;
+    --line: #283050;
+    --primary: #8ea4ff;
+    --primary-ink: #c6d1ff;
+    --primary-soft: #232d58;
+    --margin: #f07a6e;
+    --ok: #54c98a;
+    --info: #6fb0f2;
+    --warn: #f0b245;
+    --bad: #f27a70;
+    --slate: #9ba2b9;
+    --nav: #0b0e1a;
+    --nav-2: #171c33;
+    --nav-ink: #aab2cc;
+    --nav-active: #e7e9f1;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-soft: var(--primary-soft);
+  --color-margin: var(--margin);
+  --color-ok: var(--ok);
+  --color-info: var(--info);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-slate: var(--slate);
+  --color-nav: var(--nav);
+  --color-nav-2: var(--nav-2);
+  --color-nav-ink: var(--nav-ink);
+  --color-nav-active: var(--nav-active);
+  --font-sans: "Onest", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Unbounded", "Onest", ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+dialog::backdrop {
+  background: rgb(10 14 30 / 0.5);
+}
+
+/* Daftar hoshiyasi: jurnal sarlavhalarida */
+.margin-rule {
+  background-image: linear-gradient(to right, transparent 0, transparent 22px, var(--margin) 22px, var(--margin) 23px, transparent 23px);
+}
+
+/* Yuklanish skeleti */
+@keyframes shimmer {
+  from { background-position: -200px 0; }
+  to { background-position: calc(200px + 100%) 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 0, var(--line) 50%, var(--surface-2) 100%) no-repeat;
+  background-size: 200px 100%;
+  background-color: var(--surface-2);
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* Gorizontal aylanuvchi jadval: soyali chetlar */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}

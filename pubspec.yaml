@@ -1,0 +1,29 @@
+name: edu_nazorat
+description: Xususiy maktab va o'quv markazlari uchun nazorat platformasi (mock ma'lumotli MVP).
+publish_to: 'none'
+version: 0.2.0+2
+
+environment:
+  sdk: ">=3.6.0 <4.0.0" # Flutter 3.27+
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Jonli kamera oqimi (0.12.x Flutter 3.44+ talab qiladi; pub mos versiyani tanlaydi).
+  camera: ">=0.11.0 <0.13.0"
+  # Yuzni topish (qurilmada, internetsiz).
+  google_mlkit_face_detection: ^0.13.1
+  # MobileFaceNet modelini ishga tushirish (qurilmada).
+  tflite_flutter: ">=0.11.0 <0.13.0"
+  # Yuz kesimini JPEG qilish.
+  image: ^4.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/mobilefacenet.tflite

@@ -1,0 +1,38 @@
+{
+  "name": "@edunazorat/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EduNazorat NestJS server: buyruqlar, kirish, real vaqt, push, to'lovlar",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "dev": "tsc -p tsconfig.json && node dist/main.js",
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
+    "seed": "tsc -p tsconfig.json && node dist/scripts/seed.js",
+    "vapid": "node -e \"const w=require('web-push');const k=w.generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey+'\\nVAPID_PRIVATE_KEY='+k.privateKey)\"",
+    "create-admin": "tsc -p tsconfig.json && node dist/scripts/create-admin.js"
+  },
+  "dependencies": {
+    "@edunazorat/shared": "*",
+    "@nestjs/common": "^11.2.7",
+    "@nestjs/core": "^11.2.7",
+    "@nestjs/platform-express": "^11.2.7",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0",
+    "pg": "^8.23.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "@types/web-push": "^3.6.4",
+    "typescript": "^5.9.3"
+  }
+}
