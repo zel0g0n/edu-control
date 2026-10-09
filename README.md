@@ -17,7 +17,7 @@ hisobotlar. Til: o'zbekcha va ruscha.
 ## Talablar
 
 - Node.js 20 yoki 22 (`node -v`)
-- Ma'lumotlar bazasi: Neon (bulut Postgres), oddiy Postgres yoki hech narsa (o'rnatilgan PGlite)
+- Ma'lumotlar bazasi: Neon (bulut Postgres), oddiy Postgres yoki hech narsa (o'rnatilgan PGlite). Haqiqiy ma'lumotlar O'zbekistondagi serverda saqlanishi shart (QOLLANMA.md, 6.2)
 
 ## 1. Tez boshlash: demo (server kerak emas)
 

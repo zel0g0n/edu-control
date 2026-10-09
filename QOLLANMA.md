@@ -10,7 +10,7 @@ Qisqacha yo'l:
 | Ko'rib chiqish, sinash | Faqat web, demo rejim (server kerak emas) | 2 |
 | Haqiqiy ishlatish | API server + baza + web | 3 |
 | Telefondan ochish, kamera bilan davomat | Lokal tarmoq yoki tunnel, HTTPS | 5 |
-| Internetga chiqarish | Neon + server + Vercel | 6 |
+| Internetga chiqarish | Demo: Vercel. Haqiqiy: O'zbekistondagi server | 6 |
 
 ---
 
@@ -104,10 +104,10 @@ Chiqqan satrni nusxalab `JWT_SECRET=` dan keyin qo'ying. Boshqalarga ko'rsatmang
 | Variant | Qiymat | Qachon |
 |---|---|---|
 | A. O'rnatilgan PGlite | `DATABASE_URL=pglite:./data/db` | Sinov, bitta maktab kompyuteri. Hech narsa o'rnatish shart emas. Baza `api\data\db` papkasida |
-| B. Neon (bulut) | `DATABASE_URL=postgres://...neon.tech/neondb?sslmode=require` | Internetga chiqarish, bir necha maktab |
+| B. Neon (bulut) | `DATABASE_URL=postgres://...neon.tech/neondb?sslmode=require` | Faqat sinov (xorijiy server: haqiqiy o'quvchi ma'lumotlari uchun mumkin emas, 6.2) |
 | C. O'z Postgres'ingiz | `DATABASE_URL=postgres://postgres:parol@localhost:5432/edunazorat` | Maktab serverida Postgres bor bo'lsa |
 
-**Neon ulanish satrini olish:** https://neon.tech → ro'yxatdan o'ting → "Create project"
+**Neon ulanish satrini olish (sinov uchun):** https://neon.tech → ro'yxatdan o'ting → "Create project"
 (region: Frankfurt, Uzbekistonga eng yaqin) → "Connect" tugmasi → "Connection string" ni nusxalang.
 Jadvallarni server o'zi yaratadi, qo'lda hech narsa qilmaysiz.
 
@@ -298,31 +298,112 @@ Video yozilmaydi; har ota-onaga faqat o'z farzandining yuz kesimi yuboriladi.
 
 ## 6. Internetga chiqarish (doimiy manzil)
 
-Tavsiya etilgan sxema:
+### 6.1 Demo'ni Vercel'ga chiqarish (sinov uchun)
 
-| Qism | Qayerda | Izoh |
-|---|---|---|
-| Baza | Neon | 3.2 dagi B variant |
-| API | VPS (masalan, Ubuntu server) yoki Render/Railway | **Bitta nusxa** ishlashi kerak (hozirgi arxitektura) |
-| Web | Vercel | Bepul, HTTPS o'zi beriladi |
+Batafsil, rasmsiz bosqichma-bosqich qo'llanma va muammolar jadvali: **VERCEL.md**.
 
-**API (server):**
+Server ulanmagan web demo rejimda ishlaydi: ma'lumotlar har telefonning o'z brauzerida qoladi,
+Vercel faqat sayt kodini beradi, hech qanday shaxsiy ma'lumot unga yuborilmaydi.
+HTTPS o'zi beriladi, shuning uchun telefonda kamera darhol ishlaydi.
 
-- Build buyrug'i: `npm install && npm run build -w shared && npm run build -w api`
-- Ishga tushirish: `npm start -w api`
-- O'zgaruvchilar (`api\.env` dagi kabi): `NODE_ENV=production`, `DATABASE_URL` (Neon), `JWT_SECRET`,
-  `WEB_ORIGIN=https://sizning-sayt.vercel.app`, `PUBLIC_URL=https://api.sizning-domen.uz`, Eskiz, VAPID, Click/Payme.
-- Bulut xostingda `pglite:` ishlatmang: qayta ishga tushganda disk tozalanishi mumkin, Neon ishlating.
+**1) GitHub'ga joylash** (Git o'rnatilgan bo'lsin, 1.3; https://github.com da hisob oching
+va "New repository" → nomi `edunazorat`, **Private** → Create):
 
-**Web (Vercel):**
+```powershell
+cd C:\edunazorat
+git init
+git add .
+git commit -m "EduNazorat"
+git branch -M main
+git remote add origin https://github.com/<sizning-login>/edunazorat.git
+git push -u origin main
+# birinchi marta GitHub'ga kirish oynasi ochiladi
+```
 
-1. Loyihani GitHub'ga joylang, Vercel'da "Import Project".
-2. Root Directory: `web`. Framework: Next.js.
-3. Environment Variables: `NEXT_PUBLIC_API_URL=https://api.sizning-domen.uz`
-4. Deploy.
+`.env` fayllari va `node_modules` `.gitignore` tufayli yuklanmaydi (kalitlar GitHub'ga chiqmaydi).
 
-**Maktab ichidagi kompyuterda doimiy ishlatish** (internet shart emas): 4-bo'lim (production) +
-5.1 (lokal tarmoq). Kompyuter o'chmasligi va terminallar yopilmasligi kerak.
+**2) Vercel:**
+
+1. https://vercel.com → "Continue with GitHub" bilan kiring.
+2. "Add New → Project" → `edunazorat` repozitoriysini tanlang → **Import**.
+3. **Root Directory**: `web` ni tanlang (Edit tugmasi). Framework: Next.js (o'zi aniqlaydi).
+   O'rnatish va yig'ish buyruqlari `web/vercel.json` da yozilgan, ularga tegmang.
+4. Environment Variables: **hech narsa qo'shmang** (`NEXT_PUBLIC_API_URL` yo'q = demo).
+5. **Deploy** → 3-5 daqiqa → `https://edunazorat-xxx.vercel.app` manzili beriladi.
+
+Telefonda shu manzilni oching, kod `1111`. Keyin har `git push` da sayt avtomatik yangilanadi.
+
+Demo'da sinov uchun haqiqiy o'quvchilarning yuz namunasini olsangiz, u faqat o'sha telefonda
+saqlanadi. Ota-onalar roziligini oling va sinovdan keyin profil → "Demo ma'lumotlarni tiklash" bilan o'chiring.
+
+### 6.2 Haqiqiy ishlatish: server O'zbekistonda bo'lishi shart
+
+"Shaxsga doir ma'lumotlar to'g'risida"gi qonunning 27¹-moddasi: O'zbekiston fuqarolarining
+shaxsiy ma'lumotlari O'zbekiston hududidagi serverlarda saqlanishi kerak. Shuning uchun haqiqiy
+ma'lumotlar bilan Neon, Render, Vercel kabi xorijiy xizmatlar **ishlatilmaydi**. Sxema:
+
+| Qism | Qayerda |
+|---|---|
+| Baza (Postgres) + API + web | Toshkentdagi bitta VPS (mahalliy xosting yoki data-markaz) |
+| Domen | `.uz` domen (masalan `maktab.uz`, `api.maktab.uz`) |
+| SMS | Eskiz.uz (mahalliy) |
+
+Bundan tashqari bazani Shaxsga doir ma'lumotlar bazalari davlat reyestrida ro'yxatdan o'tkazish
+talabi bor. Aniq tartibni yurist bilan tekshiring.
+
+**VPS'da o'rnatish** (Ubuntu 24.04, kamida 2 GB RAM, SSH orqali):
+
+```bash
+# Node.js 22, Postgres, Caddy (avtomatik HTTPS)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs postgresql caddy git
+sudo npm install -g pm2
+
+# Baza
+sudo -u postgres psql -c "CREATE USER edu WITH PASSWORD 'KUCHLI_PAROL';"
+sudo -u postgres psql -c "CREATE DATABASE edunazorat OWNER edu;"
+
+# Loyiha
+git clone https://github.com/<login>/edunazorat.git && cd edunazorat
+npm install
+cp api/.env.example api/.env && nano api/.env
+#   NODE_ENV=production
+#   DATABASE_URL=postgres://edu:KUCHLI_PAROL@localhost:5432/edunazorat
+#   JWT_SECRET=...            (3.2 dagi buyruq bilan)
+#   WEB_ORIGIN=https://maktab.uz
+#   PUBLIC_URL=https://api.maktab.uz
+#   ESKIZ_..., VAPID_...
+echo "NEXT_PUBLIC_API_URL=https://api.maktab.uz" > web/.env.local
+npm run build
+npm run create-admin -w api -- 998901234567 "Ismingiz"
+
+# Doimiy ishlashi (server qayta yoqilganda ham)
+pm2 start "npm start -w api" --name api
+pm2 start "npm start -w web" --name web
+pm2 save && pm2 startup     # chiqqan buyruqni bajaring
+```
+
+Domenning DNS'ida `maktab.uz` va `api.maktab.uz` ni VPS IP'siga yo'naltiring, so'ng
+`/etc/caddy/Caddyfile`:
+
+```
+maktab.uz {
+    reverse_proxy localhost:3000
+}
+api.maktab.uz {
+    reverse_proxy localhost:4000
+}
+```
+
+```bash
+sudo systemctl reload caddy   # HTTPS sertifikat o'zi olinadi
+```
+
+Yangilash: `git pull && npm install && npm run build && pm2 restart all`.
+Zaxira nusxa (har kuni): `pg_dump edunazorat > zaxira-$(date +%F).sql` ni cron'ga qo'ying.
+
+**Maktab ichidagi kompyuterda ishlatish** (internet shart emas, ma'lumot maktabdan chiqmaydi):
+4-bo'lim (production) + 5.1 (lokal tarmoq). Kompyuter o'chmasligi kerak.
 
 ---
 
