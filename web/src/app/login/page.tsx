@@ -7,6 +7,7 @@ import { DEMO_ACCOUNTS } from "@edunazorat/shared";
 
 import { errorText, Logo } from "@/components/providers";
 import { homeFor } from "@/components/shell";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { btn, cx, inputCls, Segmented } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
 import { fmt } from "@/lib/format";
@@ -140,7 +141,10 @@ export default function LoginPage() {
       <main className="flex flex-col px-5 pt-[max(env(safe-area-inset-top),20px)] pb-8 md:justify-center md:px-16">
         <div className="flex items-center justify-between md:absolute md:top-6 md:right-8">
           <span className="md:hidden"><Logo /></span>
-          <Segmented size="sm" value={app.lang} onChange={(l) => app.setLang(l)} options={[{ value: "uz", label: "UZ" }, { value: "ru", label: "RU" }]} />
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <Segmented size="sm" value={app.lang} onChange={(l) => app.setLang(l)} options={[{ value: "uz", label: "UZ" }, { value: "ru", label: "RU" }]} />
+          </div>
         </div>
 
         <div className="mx-auto mt-10 w-full max-w-sm md:mt-0">

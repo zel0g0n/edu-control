@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { Providers } from "@/components/providers";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme-boot";
 
 import "./globals.css";
 
@@ -24,8 +25,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="uz" className="h-full antialiased">
+    <html lang="uz" className="h-full antialiased" suppressHydrationWarning>
       <head>
+        {/* Mavzu sahifa chizilishidan oldin qo'yiladi (miltillash bo'lmasin) */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}

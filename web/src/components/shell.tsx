@@ -16,6 +16,7 @@ import { fmt } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
 import { enablePush, pushState } from "@/lib/push";
 import { Logo, useRun } from "./providers";
+import { ThemeSetting, ThemeToggle } from "./theme-toggle";
 import { Avatar, btn, cx, Modal, PageSkeleton, Pill, Segmented } from "./ui";
 
 export interface NavItem {
@@ -127,8 +128,9 @@ export function AppShell({ role, children }: { role: UserRole; children: React.R
             );
           })}
         </nav>
-        <div className="mt-auto border-t border-white/8 pt-3">
-          <AccountButton dark />
+        <div className="mt-auto flex items-center gap-1 border-t border-white/8 pt-3">
+          <div className="min-w-0 flex-1"><AccountButton dark /></div>
+          <ThemeToggle nav />
         </div>
       </aside>
 
@@ -198,6 +200,7 @@ export function PageHeader({
           {subtitle && <div className="mt-0.5 truncate text-[13px] text-muted md:text-sm">{subtitle}</div>}
         </div>
         {actions && <div className="hidden items-center gap-2 sm:flex">{actions}</div>}
+        <ThemeToggle className="md:hidden" />
         <NotificationBell />
         <div className="md:hidden"><AccountButton /></div>
       </div>
@@ -258,6 +261,7 @@ export function AccountButton({ dark }: { dark?: boolean }) {
         </div>
 
         <div className="mt-5 flex flex-col gap-4">
+          <ThemeSetting />
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-semibold">{t("Til")}</span>
             <Segmented size="sm" value={app.lang} onChange={(l) => app.setLang(l)} options={[{ value: "uz", label: "O'zbekcha" }, { value: "ru", label: "Русский" }]} />

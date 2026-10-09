@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: klasslari foydalanuvchi tanlagan mavzuga bog'liq */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /*
  * EduNazorat: "siyoh va daftar". Iliq qog'oz foni, siyoh-ko'k asosiy rang,
  * daftar hoshiyasidagi qizil chiziq aksent sifatida. Baholar rangi
@@ -29,8 +32,9 @@
   color-scheme: light;
 }
 
+/* Mavzu: profil yoki sarlavhadagi tugma data-theme ni o'rnatadi; JS bo'lmasa tizim sozlamasi */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1221;
     --surface: #161a2c;
     --surface-2: #1d2238;
@@ -52,6 +56,29 @@
     --nav-active: #e7e9f1;
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f1221;
+  --surface: #161a2c;
+  --surface-2: #1d2238;
+  --ink: #e7e9f1;
+  --muted: #9ba2b9;
+  --line: #283050;
+  --primary: #8ea4ff;
+  --primary-ink: #c6d1ff;
+  --primary-soft: #232d58;
+  --margin: #f07a6e;
+  --ok: #54c98a;
+  --info: #6fb0f2;
+  --warn: #f0b245;
+  --bad: #f27a70;
+  --slate: #9ba2b9;
+  --nav: #0b0e1a;
+  --nav-2: #171c33;
+  --nav-ink: #aab2cc;
+  --nav-active: #e7e9f1;
+  color-scheme: dark;
 }
 
 @theme inline {
