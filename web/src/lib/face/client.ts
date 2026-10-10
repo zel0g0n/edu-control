@@ -8,6 +8,20 @@ import type { Detection } from "./yunet";
 
 const SINGLE_KEY = "edunazorat-face-single-thread";
 
+/**
+ * Worker blob: manzildan ochiladi va ichida public/face/face-worker.mjs import qilinadi.
+ * blob: Worker sahifaning cross-origin siyosatini meros oladi, shuning uchun Vercel CDN
+ * statik fayllarga COEP sarlavhasini qo'ymasa ham bloklanmaydi.
+ */
+function createFaceWorker(): Worker {
+  const src = new URL(`/face/face-worker.mjs?v=${process.env.NEXT_PUBLIC_FACE_WORKER_VERSION ?? "dev"}`, location.origin).href;
+  const blob = new Blob([`import ${JSON.stringify(src)};`], { type: "text/javascript" });
+  const url = URL.createObjectURL(blob);
+  const w = new Worker(url, { type: "module", name: "edunazorat-face" });
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return w;
+}
+
 type Pending = { resolve: (v: WorkerResponse) => void; reject: (e: Error) => void };
 
 /** Yuz tanish Worker'i bilan ishlash (bitta nusxa, sahifalar orasida qayta ishlatiladi). */
@@ -61,11 +75,12 @@ class FaceWorkerClient {
         w.terminate();
         reject(new Error(message));
       };
-      const w = new Worker(new URL("./face.worker.ts", import.meta.url), { type: "module" });
+      const w = createFaceWorker();
       this.worker = w;
       w.onmessage = (e: MessageEvent<WorkerResponse>) => {
         const m = e.data;
         if (m.type === "ready") {
+          console.info(`Yuz tanish tayyor: ${m.threads ?? 1} oqim${self.crossOriginIsolated ? "" : " (cross-origin isolation yo'q)"}`);
           settled = true;
           return resolve();
         }
@@ -95,11 +110,13 @@ class FaceWorkerClient {
       };
       // Model yuklanishi sekin internetda uzoq: 3 daqiqadan keyin to'xtatiladi
       setTimeout(() => fail("Yuz tanish modeli 3 daqiqada yuklanmadi"), 180_000);
+      // blob: Worker ichida nisbiy manzil ishlamaydi: hammasi to'liq manzil bilan
+      const abs = (p: string) => new URL(p, location.origin).href;
       const msg: WorkerRequest = {
         type: "init",
-        wasmPath: FACE.ortWasmPath,
-        detectorUrl: FACE.detectorUrl,
-        embedderUrl: FACE.embedderUrl,
+        wasmPath: abs(FACE.ortWasmPath),
+        detectorUrl: abs(FACE.detectorUrl),
+        embedderUrl: abs(FACE.embedderUrl),
         threads,
       };
       w.postMessage(msg);

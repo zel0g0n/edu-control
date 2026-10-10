@@ -9,7 +9,7 @@ export type WorkerRequest =
   | { type: "embed"; id: number; kps: Point[][] };
 
 export type WorkerResponse =
-  | { type: "ready" }
+  | { type: "ready"; threads?: number }
   /** Modellar yuklanishi (birinchi ochilishda; keyin telefondan olinadi). */
   | { type: "progress"; loaded: number; total: number }
   | { type: "detected"; id: number; detections: Detection[]; perRegion?: Detection[][]; ms: number }

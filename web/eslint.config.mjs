@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // onnxruntime-web dan ko'chirilgan fayllar
     "public/ort/**",
+    // scripts/build-worker.mjs yig'gan fayl
+    "public/face/**",
   ]),
 ]);
 

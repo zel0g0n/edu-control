@@ -78,7 +78,12 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   try {
     if (m.type === "init") {
       if (!engine) {
-        ort.env.wasm.wasmPaths = m.wasmPath;
+        // ORT glue (.mjs) blob: orqali: ichki oqimlar undan yaratiladi va sahifa siyosatini
+        // (COEP) meros oladi — hosting statik faylga sarlavha qo'ymasa ham ishlaydi.
+        const mjsRes = await fetch(`${m.wasmPath}ort-wasm-simd-threaded.mjs`);
+        if (!mjsRes.ok) throw new Error(`ORT yuklanmadi (${mjsRes.status})`);
+        const mjsUrl = URL.createObjectURL(new Blob([await mjsRes.text()], { type: "text/javascript" }));
+        ort.env.wasm.wasmPaths = { mjs: mjsUrl, wasm: `${m.wasmPath}ort-wasm-simd-threaded.wasm` };
         // Ko'p yadroli ishlash faqat cross-origin isolation bo'lsa (next.config.ts headers)
         const cores = (self.navigator as Navigator | undefined)?.hardwareConcurrency ?? 2;
         ort.env.wasm.numThreads = m.threads && self.crossOriginIsolated ? Math.max(1, Math.min(4, cores)) : 1;
@@ -90,7 +95,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
           new Promise<never>((_, rej) => setTimeout(() => rej(new Error("WebAssembly ishga tushmadi (vaqt tugadi)")), 25_000)),
         ]);
       }
-      post({ type: "ready" });
+      post({ type: "ready", threads: ort.env.wasm.numThreads ?? 1 });
     } else if (m.type === "detect") {
       if (!engine) throw new Error("Model hali yuklanmagan");
       frame = { width: m.width, height: m.height, data: new Uint8ClampedArray(m.buffer) };
