@@ -23,6 +23,12 @@ export interface Config {
   paymeTestKey?: string;
 }
 
+/** Panelga nusxalashda tez-tez qo'shilib ketadigan "NOM=", qo'shtirnoq va bo'shliqlarni olib tashlaydi. */
+function cleanKey(v: string | undefined, name: string): string | undefined {
+  const s = v?.trim().replace(new RegExp(`^${name}\\s*=\\s*`), "").replace(/^["']|["']$/g, "").trim();
+  return s || undefined;
+}
+
 const bool = (v: string | undefined, d = false) => (v === undefined ? d : /^(1|true|yes)$/i.test(v));
 
 /** api/.env faylini (bo'lsa) process.env ga yuklaydi. Tizim o'zgaruvchilari ustun turadi. */
@@ -52,8 +58,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     eskizPassword: env.ESKIZ_PASSWORD,
     eskizFrom: env.ESKIZ_FROM ?? "4546",
     seedDemo: bool(env.SEED_DEMO, false),
-    vapidPublic: env.VAPID_PUBLIC_KEY,
-    vapidPrivate: env.VAPID_PRIVATE_KEY,
+    vapidPublic: cleanKey(env.VAPID_PUBLIC_KEY, "VAPID_PUBLIC_KEY"),
+    vapidPrivate: cleanKey(env.VAPID_PRIVATE_KEY, "VAPID_PRIVATE_KEY"),
     vapidSubject: env.VAPID_SUBJECT ?? "mailto:admin@example.com",
     clickSecretKey: env.CLICK_SECRET_KEY,
     clickServiceId: env.CLICK_SERVICE_ID,

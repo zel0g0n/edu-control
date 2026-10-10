@@ -17,8 +17,17 @@ export class PushService {
   readonly enabled: boolean;
 
   constructor(@Inject(CONFIG) private readonly config: Config, @Inject(SQL) private readonly sql: Sql, @Inject(StoreService) private readonly store: StoreService) {
-    this.enabled = !!(config.vapidPublic && config.vapidPrivate);
-    if (this.enabled) webpush.setVapidDetails(config.vapidSubject, config.vapidPublic!, config.vapidPrivate!);
+    let ok = !!(config.vapidPublic && config.vapidPrivate);
+    if (ok) {
+      try {
+        webpush.setVapidDetails(config.vapidSubject, config.vapidPublic!, config.vapidPrivate!);
+      } catch (e) {
+        // Noto'g'ri kalit server ishini to'xtatmasin: bildirishnoma faqat sayt ochiq turganda keladi
+        ok = false;
+        this.log.error(`VAPID kalitlari noto'g'ri, Web Push o'chirildi: ${(e as Error).message}. Qayta yarating: npm run vapid -w api`);
+      }
+    }
+    this.enabled = ok;
     store.events.on("change", (c: Change) => {
       const fresh = (c.patch.upsert?.notifications ?? []).filter((n) => !n.read && store.clock() - n.time < 60_000);
       if (fresh.length && this.enabled) void this.deliver(fresh).catch((e) => this.log.warn(String(e)));
