@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ARCFACE_TEMPLATE, alignedFaceTensor, similarityTransform } from "../face/align";
 import { FACE } from "../face/config";
-import { invertAffine, type Point } from "../face/image";
+import { invertAffine, sampleBilinear, type Point } from "../face/image";
 import { faceDiagnostics } from "../face/diagnostics";
 import { LivenessMeter, noseAffine } from "../face/liveness";
 import { cosine, FaceGallery, Track, Tracker } from "../face/matcher";
@@ -264,4 +264,35 @@ describe("kichik yuz uchun yumshoq chegara", () => {
     const r = g.match(close, new Set(), true);
     expect(r.level).not.toBe("confident");
   });
+});
+
+describe("letterbox (tezlashtirilgan)", () => {
+  // Avvalgi (sekin, lekin aniq) usul: har piksel uchun sampleBilinear
+  function reference(img: { width: number; height: number; data: Uint8ClampedArray }, size: number) {
+    const scale = Math.min(size / img.width, size / img.height);
+    const nw = Math.round(img.width * scale), nh = Math.round(img.height * scale);
+    const plane = size * size, t = new Float32Array(3 * plane), px = [0, 0, 0];
+    const sx = img.width / nw, sy = img.height / nh;
+    for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+      sampleBilinear(img, (x + 0.5) * sx - 0.5, (y + 0.5) * sy - 0.5, px);
+      const o = y * size + x;
+      t[o] = px[2]; t[plane + o] = px[1]; t[2 * plane + o] = px[0];
+    }
+    return t;
+  }
+  const rnd = (w: number, h: number) => {
+    const data = new Uint8ClampedArray(w * h * 4);
+    let s = 7;
+    for (let i = 0; i < data.length; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; data[i] = s & 255; }
+    return { width: w, height: h, data };
+  };
+  for (const [w, h] of [[640, 640], [1920, 1080], [301, 177], [640, 500]]) {
+    it(`${w}×${h} natijasi avvalgi usul bilan bir xil`, () => {
+      const img = rnd(w, h);
+      const a = letterboxBGR(img, 640).tensor, b = reference(img, 640);
+      let max = 0;
+      for (let i = 0; i < a.length; i++) max = Math.max(max, Math.abs(a[i] - b[i]));
+      expect(max).toBeLessThan(1e-3);
+    });
+  }
 });

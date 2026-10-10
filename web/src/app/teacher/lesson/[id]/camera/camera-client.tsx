@@ -191,6 +191,7 @@ export function CameraClient() {
     if (status !== "ready") return;
     let alive = true;
     let cycle = 0;
+    let cycleMs = FACE.cycleTargetMs;
     (async () => {
       while (alive) {
         const started = performance.now();
@@ -204,7 +205,12 @@ export function CameraClient() {
             }
           }
         }
-        const wait = Math.max(16, FACE.frameIntervalMs - (performance.now() - started));
+        // Qurilma qiynalayotgan bo'lsa (sikl rejadagidan ancha uzun: qizish, kuchsiz protsessor)
+        // siklar orasida dam beriladi: telefon qizib ketmaydi, kamera va ekran silliq qoladi.
+        const took = performance.now() - started;
+        cycleMs = cycleMs * 0.8 + took * 0.2;
+        const rest = Math.min(800, Math.max(0, cycleMs - FACE.cycleTargetMs * 1.5) * 0.5);
+        const wait = Math.max(16, FACE.frameIntervalMs - took) + rest;
         await new Promise((r) => setTimeout(r, wait));
       }
     })();

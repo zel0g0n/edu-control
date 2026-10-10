@@ -1,4 +1,4 @@
-import { sampleBilinear, type Point, type RgbaImage } from "./image";
+import type { Point, RgbaImage } from "./image";
 
 export interface Detection {
   score: number;
@@ -11,6 +11,10 @@ export interface Detection {
 /**
  * Kadrni S×S kvadratga sig'diradi (nisbat saqlanadi, qolgani qora) va
  * YuNet kirishiga aylantiradi: [1, 3, S, S], BGR, 0..255.
+ *
+ * Tezlik: bo'laklar (640×640, masshtab 1) to'g'ridan-to'g'ri ko'chiriladi;
+ * kichraytirishda ustun koeffitsiyentlari bir marta hisoblanadi.
+ * Natija sampleBilinear bilan bir xil (testda tekshirilgan).
  */
 export function letterboxBGR(img: RgbaImage, size: number): { tensor: Float32Array; scale: number } {
   const scale = Math.min(size / img.width, size / img.height);
@@ -18,17 +22,52 @@ export function letterboxBGR(img: RgbaImage, size: number): { tensor: Float32Arr
   const nh = Math.round(img.height * scale);
   const plane = size * size;
   const tensor = new Float32Array(3 * plane);
-  const px = [0, 0, 0];
-  const sx = img.width / nw;
-  const sy = img.height / nh;
+  const d = img.data;
+  const W = img.width, H = img.height;
+  if (nw === W && nh === H) {
+    for (let y = 0; y < nh; y++) {
+      let i = y * W * 4;
+      let o = y * size;
+      for (let x = 0; x < nw; x++, i += 4, o++) {
+        tensor[o] = d[i + 2];
+        tensor[plane + o] = d[i + 1];
+        tensor[2 * plane + o] = d[i];
+      }
+    }
+    return { tensor, scale };
+  }
+  const sx = W / nw;
+  const sy = H / nh;
+  // Ustunlar: chap/o'ng piksel indekslari va og'irlik (sampleBilinear bilan bir xil chegaralash)
+  const cx0 = new Int32Array(nw), cx1 = new Int32Array(nw), cfx = new Float32Array(nw);
+  for (let x = 0; x < nw; x++) {
+    let fx = (x + 0.5) * sx - 0.5;
+    if (fx < 0) fx = 0;
+    if (fx > W - 1) fx = W - 1;
+    const x0 = Math.floor(fx);
+    cx0[x] = x0 * 4;
+    cx1[x] = (x0 + 1 < W ? x0 + 1 : x0) * 4;
+    cfx[x] = fx - x0;
+  }
   for (let y = 0; y < nh; y++) {
-    const srcY = (y + 0.5) * sy - 0.5;
-    for (let x = 0; x < nw; x++) {
-      sampleBilinear(img, (x + 0.5) * sx - 0.5, srcY, px);
-      const o = y * size + x;
-      tensor[o] = px[2]; // B
-      tensor[plane + o] = px[1]; // G
-      tensor[2 * plane + o] = px[0]; // R
+    let fy = (y + 0.5) * sy - 0.5;
+    if (fy < 0) fy = 0;
+    if (fy > H - 1) fy = H - 1;
+    const y0 = Math.floor(fy);
+    const y1 = y0 + 1 < H ? y0 + 1 : y0;
+    const wy = fy - y0;
+    const r0 = y0 * W * 4, r1 = y1 * W * 4;
+    let o = y * size;
+    for (let x = 0; x < nw; x++, o++) {
+      const a0 = r0 + cx0[x], a1 = r0 + cx1[x], b0 = r1 + cx0[x], b1 = r1 + cx1[x];
+      const wx = cfx[x];
+      for (let c = 0; c < 3; c++) {
+        const top = d[a0 + c] + (d[a1 + c] - d[a0 + c]) * wx;
+        const bot = d[b0 + c] + (d[b1 + c] - d[b0 + c]) * wx;
+        const v = top + (bot - top) * wy;
+        // RGB -> BGR tekisliklar
+        tensor[(2 - c) * plane + o] = v;
+      }
     }
   }
   return { tensor, scale };

@@ -169,6 +169,7 @@ Vercel o'zi qayta yig'adi (1-3 daqiqa). Sayt manzili o'zgarmaydi.
 | Vercel'da `No Next.js version detected` | Root Directory `web` qilinmagan: Project → **Settings → Build and Deployment → Root Directory** → `web` → **Deployments → ... → Redeploy** |
 | Vercel'da `Cannot find module '@edunazorat/shared'` | Root Directory `web` va `web/vercel.json` GitHub'da borligini tekshiring; "Include files outside the root directory" yoqilgan bo'lsin (Settings → Build and Deployment) |
 | Vercel'da boshqa build xatosi | **Deployments** → qizil deploy → **Build Logs**: oxirgi 30 qatorni nusxalab menga yuboring |
+| "Yuz tanish ishga tushmadi: Worker xatosi", konsolda "Cross-Origin Embedder Policy" | `web/vercel.json` dagi `headers` bo'limi GitHub'ga yuklanganini tekshiring (v0.10+), so'ng Vercel'da **Redeploy** |
 | Sayt ochiladi, kamera ochilmaydi | Brauzer manzil qatoridagi belgi → Ruxsatlar → Kamera: Ruxsat berish. Kamera boshqa ilovada band bo'lmasin |
 | Telefonda eski versiya ko'rinadi | Sahifani yangilang; "Bosh ekran"dan ochilgan bo'lsa ilovani yopib qayta oching |
 | Ma'lumotlar yo'qoldi | Demo'da ular brauzerda: boshqa brauzer, inkognito yoki tarix tozalansa yo'qoladi. Bu normal |
