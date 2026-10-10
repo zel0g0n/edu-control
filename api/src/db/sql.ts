@@ -25,7 +25,18 @@ export async function connect(url: string): Promise<Sql> {
     return { ...sql, close: () => db.close() };
   }
   const { Pool } = await import("pg");
-  const pool = new Pool({ connectionString: url, max: 5, ssl: /sslmode=require|neon\.tech/.test(url) ? { rejectUnauthorized: true } : undefined });
+  const pool = new Pool({
+    connectionString: url,
+    max: 5,
+    ssl: /sslmode=require|neon\.tech/.test(url) ? { rejectUnauthorized: true } : undefined,
+    // Neon bepul bazasi 5 daqiqa ishlatilmasa "uxlaydi" va ochiq ulanishlarni uzadi:
+    // bo'sh ulanishlar erta yopiladi, uyg'onish uchun 20 soniya kutiladi.
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 20_000,
+    keepAlive: true,
+  });
+  // Bo'sh turgan ulanish uzilsa (baza qayta ishga tushdi, tarmoq), server yiqilmasin: keyingi so'rov yangisini ochadi
+  pool.on("error", (e) => console.warn(`[baza] bo'sh ulanish uzildi: ${e.message}`));
   const viaClient = (c: { query: (t: string, p?: unknown[]) => Promise<{ rows: unknown[] }> }): Sql => ({
     async query<T>(text: string, params: unknown[] = []) {
       return (await c.query(text, params)).rows as T[];

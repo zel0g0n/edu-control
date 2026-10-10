@@ -45,7 +45,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: env.DATABASE_URL ?? "pglite:./data/db",
     jwtSecret: jwtSecret || "dev-secret-faqat-sinov-uchun-dev-secret",
     webOrigin: (env.WEB_ORIGIN ?? "http://localhost:3000").split(",").map((s) => s.trim()).filter(Boolean),
-    publicUrl: (env.PUBLIC_URL ?? `http://localhost:${env.PORT ?? 4000}`).replace(/\/$/, ""),
+    // Render o'zi RENDER_EXTERNAL_URL beradi (https://....onrender.com)
+    publicUrl: (env.PUBLIC_URL ?? env.RENDER_EXTERNAL_URL ?? `http://localhost:${env.PORT ?? 4000}`).replace(/\/$/, ""),
     smsDevMode: bool(env.SMS_DEV_MODE, !env.ESKIZ_EMAIL),
     eskizEmail: env.ESKIZ_EMAIL,
     eskizPassword: env.ESKIZ_PASSWORD,

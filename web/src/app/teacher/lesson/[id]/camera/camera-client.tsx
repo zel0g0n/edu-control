@@ -48,12 +48,16 @@ const shortName = (name?: string) => {
   return b ? `${a} ${b[0]}.` : a;
 };
 
+/** Sinov serverida (to'qima ma'lumot) demo videoni ko'rsatish: Vercel'da NEXT_PUBLIC_DEMO_VIDEO=1. Haqiqiy serverda qo'ymang. */
+const DEMO_VIDEO_ON_SERVER = process.env.NEXT_PUBLIC_DEMO_VIDEO === "1";
+
 /**
  * Kamera orqali davomat: o'qituvchi butun sinfni jonli kuzatadi (yozilmaydi).
  * Kadr bo'laklarga bo'lib tekshiriladi, shuning uchun orqa partalardagi
  * kichik yuzlar ham topiladi. Tanilgan o'quvchi yashil doira va boshi
  * ustida ismi bilan belgilanadi; davomat hisoboti kuzatuv davomida yig'iladi.
  */
+
 export function CameraClient() {
   const app = useApp();
   const t = useT();
@@ -434,7 +438,7 @@ export function CameraClient() {
             {present.length}<span className="text-white/75">/{students.length}</span>
           </div>
         </div>
-        {app.mode === "local" && (
+        {(app.mode === "local" || DEMO_VIDEO_ON_SERVER) && (
           <div className="mt-2 flex">
             {demo ? (
               <span className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-sky-600/85 px-3 py-1.5 text-xs font-semibold backdrop-blur">

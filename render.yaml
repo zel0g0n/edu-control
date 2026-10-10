@@ -1,0 +1,39 @@
+# Render Blueprint: EduNazorat API sinov serveri (RENDER.md ga qarang).
+# Faqat sinov/demo uchun: server xorijda (Frankfurt). Haqiqiy shaxsiy ma'lumotlar uchun
+# O'zbekistondagi server kerak (QOLLANMA.md, 6.2).
+services:
+  - type: web
+    name: edunazorat-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --include=dev && npm run build -w api
+    startCommand: npm start -w api
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Kamida 32 belgi: Render o'zi tasodifiy qiymat yaratadi
+      - key: JWT_SECRET
+        generateValue: true
+      # Neon'dan nusxalanadi: postgresql://...neon.tech/neondb?sslmode=require
+      - key: DATABASE_URL
+        sync: false
+      # Vercel sayt manzili, masalan https://edu-control-nu.vercel.app
+      - key: WEB_ORIGIN
+        sync: false
+      # Bo'sh bazaga demo ma'lumotlar yoziladi (birinchi ishga tushishda)
+      - key: SEED_DEMO
+        value: "true"
+      # SMS yuborilmaydi, kod ekranda ko'rinadi. Eskiz ulangach false qiling
+      - key: SMS_DEV_MODE
+        value: "true"
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:admin@example.com

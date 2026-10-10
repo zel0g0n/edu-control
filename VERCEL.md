@@ -179,6 +179,8 @@ Vercel o'zi qayta yig'adi (1-3 daqiqa). Sayt manzili o'zgarmaydi.
 ## Eslatmalar
 
 - Vercel **Hobby** tarifi bepul, lekin tijoriy bo'lmagan ishlatish uchun. Sinov uchun yetarli.
+- Telefonlar orasida umumiy ma'lumot (real vaqt davomat, xabarlar) kerak bo'lsa: API'ni sinov serveriga
+  chiqaring, `RENDER.md`.
 - Bu demo. Haqiqiy o'quvchi ma'lumotlari bilan ishlatish uchun server O'zbekistonda bo'lishi
   kerak (qonun talabi): `QOLLANMA.md`, 6.2-bo'lim.
 - Repozitoriy **Private** bo'lsin: kodni boshqalar ko'rmaydi, sayt esa hammaga ochiq.

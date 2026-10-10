@@ -302,6 +302,8 @@ Video yozilmaydi; har ota-onaga faqat o'z farzandining yuz kesimi yuboriladi.
 
 Batafsil, rasmsiz bosqichma-bosqich qo'llanma va muammolar jadvali: **VERCEL.md**.
 
+API'ni ham bepul sinov serveriga (Render + Neon) chiqarish, telefonlar orasida umumiy ma'lumot bilan: **RENDER.md**.
+
 Server ulanmagan web demo rejimda ishlaydi: ma'lumotlar har telefonning o'z brauzerida qoladi,
 Vercel faqat sayt kodini beradi, hech qanday shaxsiy ma'lumot unga yuborilmaydi.
 HTTPS o'zi beriladi, shuning uchun telefonda kamera darhol ishlaydi.
