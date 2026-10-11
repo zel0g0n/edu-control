@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nest
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import {
-  CommandError, DEMO_ACCOUNTS, DEMO_PASSWORD, canManageCredentials, checkNewPassword, findUserByLogin, generatePassword, loginOf,
+  CommandError, DEMO_ACCOUNTS, DEMO_PASSWORD, byProfileOrder, canManageCredentials, checkNewPassword, findLoginCandidates, generatePassword, loginOf,
   type AppUser,
 } from "@edunazorat/shared";
 
@@ -62,7 +62,7 @@ export class CredentialsService implements OnModuleInit, OnModuleDestroy {
     this.reloadTimer.unref();
     // Demo ma'lumotlar: demo foydalanuvchilarga ma'lum parol (faqat SEED_DEMO yoqilganda)
     if (this.config.seedDemo) {
-      const demo = DEMO_ACCOUNTS.map((a) => this.store.db.users.find((u) => u.phone === a.phone)).filter((u): u is AppUser => !!u);
+      const demo = this.store.db.users.filter((u) => DEMO_ACCOUNTS.some((a) => a.phone === u.phone));
       let n = 0;
       for (const u of demo) if (!this.versions.has(u.id)) { await this.store_(u.id, DEMO_PASSWORD, false); n++; }
       if (n) this.log.warn(`Demo foydalanuvchilarga parol qo'yildi: ${DEMO_PASSWORD} (${n} ta)`);
@@ -118,27 +118,38 @@ export class CredentialsService implements OnModuleInit, OnModuleDestroy {
     await this.limits.hit(`loginfail:${key}`, 15 * 60);
   }
 
-  /** Login (ism.familiya yoki telefon) + parol. */
+  /**
+   * Login (ism.familiya yoki telefon) + parol. Bitta telefonda bir nechta profil bo'lsa
+   * (o'qituvchi va ota-ona): parol qaysi profilniki bo'lsa o'sha ochiladi (bir nechtasiga mos
+   * kelsa ustuvori), qolganlariga keyin profil almashtirish orqali o'tiladi.
+   */
   async login(rawLogin: string, password: string): Promise<{ user: AppUser; mustChange: boolean }> {
     const key = String(rawLogin ?? "").trim().toLowerCase().replace(/\s+/g, "");
     await this.blocked(key);
-    let user: AppUser;
+    const pw = String(password ?? "");
+    let candidates: AppUser[];
     try {
-      user = findUserByLogin(this.store.db, rawLogin);
+      candidates = findLoginCandidates(this.store.db, rawLogin);
     } catch (e) {
       if (e instanceof CommandError && e.key === "err.institutionBlocked") throw e;
       // Javob vaqti bo'yicha "bunday login bor-yo'q"ni bilib bo'lmasin: baribir xesh hisoblanadi
-      await verifyHash(String(password ?? ""), await this.dummy());
+      await verifyHash(pw, await this.dummy());
       await this.fail(key);
       throw new CommandError("err.badLogin", {}, 401);
     }
-    const r = await this.row(user.id);
-    if (!r || !(await verifyHash(String(password ?? ""), r.hash))) {
+    const rows = await this.sql.query<Row>("SELECT user_id, hash, must_change, token_ver FROM credentials WHERE user_id = ANY($1::text[])", [candidates.map((u) => u.id)]);
+    const matched: { user: AppUser; mustChange: boolean }[] = [];
+    for (const u of candidates) {
+      const r = rows.find((x) => x.user_id === u.id);
+      if (r && (await verifyHash(pw, r.hash))) matched.push({ user: u, mustChange: !!r.must_change });
+    }
+    if (!rows.length) await verifyHash(pw, await this.dummy());
+    if (!matched.length) {
       await this.fail(key);
       throw new CommandError("err.badLogin", {}, 401);
     }
     await this.limits.clear(`loginfail:${key}`);
-    return { user, mustChange: !!r.must_change };
+    return matched.sort((a, b) => byProfileOrder(a.user, b.user))[0];
   }
 
   private dummyHash: Promise<string> | null = null;

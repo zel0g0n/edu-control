@@ -175,6 +175,33 @@ Tekshirish: http://localhost:4000/health → `{"ok":true...}` chiqsa server ishl
 
 ---
 
+## Tezlik (katta maktab)
+
+800 o'quvchili maktabda (30 sinf, 90 o'quv kunida ~440 ming davomat yozuvi) o'lchangan:
+
+| | Oldin (v0.24) | Hozir |
+|---|---|---|
+| Direktor boshlang'ich yuklash, tarmoqda | 75 MB | ~1 MB (35 kunlik davomat, brotli) |
+| Davomat saqlash (27 o'quvchi), server | ~160 ms, server shu vaqt band | ~10 ms |
+| "O'quvchilar" sahifasi (direktor) | ~92 s qotib qoladi | ~0,7 s |
+| "Hisobotlar" (30 kun) | ~9 s | ~0,7 s |
+| Kirish sahifasi JS (telefon) | 338 KB | 192 KB |
+
+Nima qilingan:
+- **Siqish:** API javoblari brotli/gzip bilan (real vaqt oqimidan tashqari).
+- **Davomat oynasi:** direktor va o'qituvchiga boshlang'ich yuklashda oxirgi 35 kun. Eski oy yoki chorak hisoboti ochilganda
+  yetishmagan qismi `/attendance` orqali avtomatik olinadi ("Eski davomat ma'lumotlari yuklanmoqda…").
+- **Indekslar:** serverda va brauzerda davomat/baholar bo'yicha keshlangan indekslar (har o'quvchi uchun butun ro'yxatni aylanmaslik).
+- **Yuz kesimi va namuna surati yozuv ichida emas, fayl sifatida.** Aks holda 800 o'quvchili maktabda oyiga ~2 GB
+  ma'lumot bazaga, server xotirasiga va har yuklashda brauzerga ketardi. Faylni faqat o'sha o'quvchini ko'ra oladiganlar ochadi.
+- **Yuz namunalari tarmoqda ixcham** (int8, ~6 marta kichik). Bazada asl sonlar; o'xshashlikka ta'siri ~0,001.
+- **Brauzer kodi:** demo rejim kodi (demo ma'lumot, tekshiruv sxemalari) va rus tili lug'ati faqat kerak bo'lganda yuklanadi.
+- **Katta jadvallar** avval 100 qator ("Yana ko'rsatish" tugmasi), faqat ekranga mos ko'rinish chiziladi.
+
+Chegara (ochiq aytilgan): server butun bazani xotirada ushlaydi. Bitta 800 o'quvchili maktab uchun ~110 MB xotira
+(o'quv yili oxiriga ~2-3 baravar). Render bepul tarifi (512 MB) bitta-ikkita maktabga yetadi; ko'p maktab uchun
+kattaroq server yoki o'tgan o'quv yillarini arxivga chiqarish kerak bo'ladi.
+
 ## 4. Production rejimi (tezroq, doimiy ishlatish uchun)
 
 Dev rejim kodni har safar qayta yig'adi va sekin. Kundalik ishlatishda bir marta yig'ib, tayyorini ishga tushiring.

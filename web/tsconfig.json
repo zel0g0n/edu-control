@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@edunazorat/shared": ["../shared/src/index.ts"],
+      "@edunazorat/shared/*": ["../shared/src/*"]
     }
   },
   "include": [

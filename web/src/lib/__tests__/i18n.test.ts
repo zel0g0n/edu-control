@@ -3,7 +3,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { translate } from "../i18n";
-import { RU, UZ } from "@edunazorat/shared";
+import { registerRussian, RU, UZ } from "@edunazorat/shared";
+
+registerRussian(RU);
 
 /** Manba kodidagi barcha t("...") / tr("...") kalitlari. */
 function sourceKeys(): Set<string> {

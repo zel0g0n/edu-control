@@ -7,6 +7,7 @@ import { addMonths, holidayDays, payrollFor, type AppUser, type PayrollRow } fro
 import { TeacherForm } from "@/components/director/forms";
 import { PageBody, PageHeader } from "@/components/shell";
 import { Avatar, btn, Card, DataTable, EmptyState, Pill, StatCard } from "@/components/ui";
+import { useAttendanceFrom } from "@/lib/data/history";
 import { useApp } from "@/lib/data/store";
 import { exportXlsx } from "@/lib/export";
 import { fmt } from "@/lib/format";
@@ -25,6 +26,8 @@ export default function PayrollPage() {
   const teachers = app.teachersOfInstitution(inst.id);
   const classIds = new Set(app.classesOfInstitution(inst.id).map((c) => c.id));
   const lessons = app.db.lessons.filter((l) => classIds.has(l.classId));
+  // O'tgan oylar: boshlang'ich yuklashdagi 35 kundan eskisi serverdan olinadi
+  const ready = useAttendanceFrom(`${month}-01`);
   const input = {
     lessons,
     attendance: app.db.attendance.filter((a) => a.day.startsWith(month)),
@@ -66,6 +69,7 @@ export default function PayrollPage() {
           </div>
         } />
       <PageBody>
+        {!ready && <p className="mb-3 text-sm text-muted" aria-live="polite">{t("Eski davomat ma'lumotlari yuklanmoqda…")}</p>}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <StatCard label={t("Jami hisoblandi")} value={fmt.moneyShort(total)} icon={HandCoins} tone="primary" caption={t("{n} o'qituvchi", { n: teachers.length })} />
           <StatCard label={t("O'tilgan darslar")} value={String(lessonsHeld)} icon={Users} caption={t("davomat olingan darslar")} />

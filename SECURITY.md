@@ -33,6 +33,12 @@ va qaysi xavflar hali qolgan.
 - Har bir buyruq kirishi qat'iy sxema bilan tekshiriladi (`shared/src/validation.ts`): tur, uzunlik, sana/oy/telefon formati,
   rasm va fayl havolasi (faqat `data:` va `https:`; `javascript:` taqiqlangan). Noma'lum maydonlar tashlanadi.
 
+- Bir telefonda bir nechta profil (o'qituvchi + ota-ona): har biri alohida foydalanuvchi, huquqlari alohida. Parolsiz
+  o'tish faqat shu muassasadagi oddiy profillarga (ota-ona, o'qituvchi, o'quvchi); direktor/administrator profiliga
+  faqat o'z paroli va 2FA bilan, boshqa muassasa profiliga faqat o'sha muassasa bergan parol bilan (bir muassasa
+  administratori parol berib boshqa muassasaga yo'l ocholmaydi). 2FA yoqilgan profilga 2FA'siz profildan o'tilmaydi.
+  O'tishda joriy sessiya yopiladi, jurnalga `auth.switchProfile` yoziladi.
+
 ### Tarmoq va brauzer
 - Sayt: Content-Security-Policy **nonce bilan**: har so'rovga yangi tasodifiy nonce, faqat shu nonce'li skriptlar ishlaydi
   (`'unsafe-inline'` va begona skriptlar taqiqlangan, `'strict-dynamic'`). Ma'lumot faqat o'z API'mizga yuboriladi, shuning uchun

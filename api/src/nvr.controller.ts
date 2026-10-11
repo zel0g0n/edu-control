@@ -8,6 +8,7 @@ import {
 
 import { LimitsService } from "./limits.service";
 import { StoreService } from "./store.service";
+import { SnapshotsService } from "./snapshots.service";
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest();
 
@@ -55,7 +56,7 @@ const NvrInstitution = createParamDecorator((_: unknown, ctx: ExecutionContext) 
 @Controller(`integrations/nvr/${NVR_API_VERSION}`)
 @UseGuards(NvrKeyGuard)
 export class NvrController {
-  constructor(@Inject(StoreService) private readonly store: StoreService) {}
+  constructor(@Inject(StoreService) private readonly store: StoreService, @Inject(SnapshotsService) private readonly snapshots: SnapshotsService) {}
 
   @Get("ping")
   ping(@NvrInstitution() inst: Institution) {
@@ -77,6 +78,8 @@ export class NvrController {
   @HttpCode(200)
   async attendance(@NvrInstitution() inst: Institution, @Body() body: NvrAttendanceInput): Promise<NvrAttendanceResult> {
     let result: NvrAttendanceResult = { applied: 0, skipped: [] };
+    // Yuz kesimlari fayl sifatida (yozuvda faqat havola)
+    await this.snapshots.extract(`nvr:${inst.id}`, (body as { marks?: unknown })?.marks);
     await this.store.applySystem("attendance.nvr", (db) => {
       const r = nvrAttendancePatch(db, inst, body, this.store.clock());
       result = r.result;

@@ -24,7 +24,7 @@ export default function DirectorHome() {
   const late = inst.settings.lateAfterMinutes;
 
   // Bugun: kamida bitta darsda belgilangan o'quvchilar.
-  const todayRecs = app.db.attendance.filter((a) => a.day === today);
+  const todayRecs = app.attendanceOnDay(today);
   const seen = new Map<string, boolean>();
   for (const r of todayRecs) seen.set(r.studentId, (seen.get(r.studentId) ?? false) || isPresent(r.status));
   const presentToday = [...seen.values()].filter(Boolean).length;

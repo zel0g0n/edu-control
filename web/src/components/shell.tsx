@@ -17,6 +17,7 @@ import { useT } from "@/lib/i18n/react";
 import { enablePush, pushState } from "@/lib/push";
 import { DevicesModal, FirstLoginPasswordPrompt, PasswordChangeModal } from "./credentials";
 import { MfaModal } from "./mfa";
+import { ProfileSwitchList, SwitchForPage, WrongAccount } from "./profiles";
 import { Logo, useRun } from "./providers";
 import { ThemeSetting, ThemeToggle } from "./theme-toggle";
 import { Avatar, btn, cx, Modal, PageSkeleton, Pill, Segmented } from "./ui";
@@ -116,6 +117,21 @@ function fitsRole(area: UserRole, r?: UserRole): boolean {
   return r === area || (area === "director" && r === "admin");
 }
 
+const AREAS: Record<string, UserRole> = { admin: "superAdmin", director: "director", teacher: "teacher", parent: "parent", student: "student" };
+
+/**
+ * Kirishdan keyin qayerga: login sahifasi ?next= bilan ochilgan bo'lsa (boshqa hisob bilan kirish uchun chiqilgan)
+ * va yangi hisob o'sha bo'limga mos bo'lsa — o'sha sahifa; aks holda o'z bosh sahifasi. Faqat ilova ichidagi yo'l.
+ */
+export function destinationFor(role: UserRole): string {
+  if (typeof window !== "undefined") {
+    const next = new URLSearchParams(window.location.search).get("next") ?? "";
+    const m = /^\/(admin|director|teacher|parent|student)(?:\/[\w-]+)*$/.exec(next);
+    if (m && fitsRole(AREAS[m[1]], role)) return next;
+  }
+  return homeFor(role);
+}
+
 /** Rol tekshiruvi + chap panel (kompyuter) / pastki menyu (telefon). */
 export function AppShell({ role, children }: { role: UserRole; children: React.ReactNode }) {
   const app = useApp();
@@ -125,13 +141,20 @@ export function AppShell({ role, children }: { role: UserRole; children: React.R
   const [more, setMore] = useState(false);
   const user = app.currentUser;
   const allowed = fitsRole(role, user?.role);
+  // Sahifa shu kishining boshqa profiliga tegishli (masalan, ota-ona bildirishnomasi o'qituvchi profilida ochildi)
+  const other = allowed ? undefined : app.profiles.find((p) => !p.current && fitsRole(role, p.role));
 
   useEffect(() => {
-    if (!user) router.replace("/login");
-    else if (!fitsRole(role, user.role)) router.replace(homeFor(user.role));
-  }, [user, role, router]);
+    // Sessiya tugasa yoki chiqilsa: kirgandan keyin shu sahifaga qaytiladi
+    if (!user) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+  }, [user, router, pathname]);
 
-  if (!allowed) return <PageSkeleton />;
+  // Boshqa rolning sahifasi: jimgina yo'naltirish o'rniga kim sifatida kirilganini aytib, tanlov beriladi
+  if (!allowed) {
+    if (!user) return <PageSkeleton />;
+    if (other) return <SwitchForPage profile={other} />;
+    return app.profilesReady ? <WrongAccount area={role} /> : <PageSkeleton />;
+  }
 
   const nav = navFor(app, role);
   const isActive = (n: NavItem) => (n.exact ? pathname === n.href : pathname === n.href || pathname.startsWith(`${n.href}/`));
@@ -298,6 +321,7 @@ export function AccountButton({ dark }: { dark?: boolean }) {
             {inst && <div className="truncate text-sm text-muted">{inst.name}</div>}
           </div>
         </div>
+        <ProfileSwitchList onDone={() => setOpen(false)} />
 
         <div className="mt-5 flex flex-col gap-4">
           <ThemeSetting />

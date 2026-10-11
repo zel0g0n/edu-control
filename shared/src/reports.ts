@@ -12,19 +12,34 @@ export interface ClassAttendanceRow { classId: string; className: string; marked
 export function attendanceByClass(classes: SchoolClass[], students: Student[], records: AttendanceRecord[], lessons?: Lesson[]): ClassAttendanceRow[] {
   const classOf = new Map(students.map((s) => [s.id, s.classId]));
   const lessonClass = new Map((lessons ?? []).map((l) => [l.id, l.classId]));
-  const of = (r: AttendanceRecord) => lessonClass.get(r.lessonId) ?? classOf.get(r.studentId);
+  // Bir o'tishda (sinflar x yozuvlar emas): katta maktabda yuz minglab yozuv
+  const tally = new Map<string, { marked: number; present: number }>();
+  for (const r of records) {
+    const c = lessonClass.get(r.lessonId) ?? classOf.get(r.studentId);
+    if (!c) continue;
+    const t = tally.get(c) ?? { marked: 0, present: 0 };
+    t.marked++;
+    if (isPresent(r.status)) t.present++;
+    tally.set(c, t);
+  }
   return classes.map((c) => {
-    const rs = records.filter((r) => of(r) === c.id);
-    const present = rs.filter((r) => isPresent(r.status)).length;
-    return { classId: c.id, className: c.name, marked: rs.length, present, rate: rs.length ? present / rs.length : null };
+    const t = tally.get(c.id) ?? { marked: 0, present: 0 };
+    return { classId: c.id, className: c.name, marked: t.marked, present: t.present, rate: t.marked ? t.present / t.marked : null };
   });
 }
 
 /** Kunlar bo'yicha davomat foizi (grafik uchun). */
 export function attendanceByDay(days: string[], records: AttendanceRecord[]): { day: string; rate: number | null; marked: number }[] {
+  const tally = new Map<string, { marked: number; present: number }>();
+  for (const r of records) {
+    const t = tally.get(r.day) ?? { marked: 0, present: 0 };
+    t.marked++;
+    if (isPresent(r.status)) t.present++;
+    tally.set(r.day, t);
+  }
   return days.map((day) => {
-    const rs = records.filter((r) => r.day === day);
-    return { day, marked: rs.length, rate: rs.length ? rs.filter((r) => isPresent(r.status)).length / rs.length : null };
+    const t = tally.get(day);
+    return { day, marked: t?.marked ?? 0, rate: t?.marked ? t.present / t.marked : null };
   });
 }
 
@@ -33,7 +48,9 @@ export function gradeAverages(grades: Grade[], key: (g: Grade) => string): { key
   for (const g of grades) {
     if (g.type === "term" || g.type === "year") continue;
     const k = key(g);
-    groups.set(k, [...(groups.get(k) ?? []), g]);
+    const l = groups.get(k);
+    if (l) l.push(g);
+    else groups.set(k, [g]);
   }
   return [...groups.entries()].map(([k, gs]) => ({ key: k, avg: weightedAverage(gs), count: gs.length })).sort((a, b) => a.key.localeCompare(b.key));
 }

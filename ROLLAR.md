@@ -41,6 +41,26 @@ istalgan bolaning hisobiga kirib, yuz rasmi, davomati va baholarini ko'ra oladi.
 | Direktor | O'z muassasasining administratorlariga |
 | Administrator | O'z muassasasining o'qituvchi, o'quvchi va ota-onalariga |
 
+## Bir kishi — bir nechta profil (o'qituvchi va ota-ona)
+
+O'qituvchining farzandi shu maktabda o'qisa, administrator o'quvchini qo'shganda ota-ona telefoniga o'qituvchining
+raqamini kiritadi. Tizim o'qituvchi hisobini o'zgartirmaydi: shu raqamga **alohida ota-ona profili** yaratiladi.
+
+- Kirishda (login yoki SMS) bir raqamda bir nechta profil bo'lsa, **"Qaysi profil bilan kirasiz?"** oynasi chiqadi.
+- Keyin istalgan vaqtda: Profil → **Boshqa profillarim** → "Ota-ona profiliga o'tish" (yoki aksincha).
+- Ota-ona profilida faqat o'z farzandi ko'rinadi; o'qituvchi profilida esa o'z sinflari. Ma'lumotlar aralashmaydi.
+- Bir muassasada bir rolda bitta profil: shu raqam bilan ikkinchi o'qituvchi qo'shib bo'lmaydi; aka-uka bolalar bitta ota-ona profiliga bog'lanadi.
+- Boshqa muassasadagi profil (masalan, maktabda o'qituvchi, o'quv markazida ota-ona) alohida: o'sha muassasa bergan parol bilan kiriladi.
+- **Direktor yoki administrator** profiliga boshqa profildan o'tib bo'lmaydi: faqat o'z paroli va 2FA bilan. Direktor esa o'z ota-ona profiliga o'ta oladi.
+- Bildirishnomalar telefonda qaysi profil ochiq bo'lishidan qat'i nazar keladi.
+
+## Bitta brauzerda bitta hisob
+
+Bitta brauzerda bir vaqtda bitta hisob ochiq turadi (bank va davlat xizmatlari saytlaridagi kabi). Boshqa rolning sahifasi
+ochilsa (masalan, super admin sifatida kirib `/director`), tizim **"Siz X sifatida kirgansiz"** deb aytadi va ikki tanlov beradi:
+**Chiqib, boshqa hisob bilan kirish** (kirgach o'sha sahifaga qaytiladi) yoki o'z sahifasiga qaytish.
+Ikki hisobni yonma-yon sinash uchun ikkinchisini boshqa brauzerda yoki yashirin (inkognito) oynada oching.
+
 ## SMS bilan kirish (ixtiyoriy)
 
 Server Eskiz.uz ga ulangan bo'lsa (yoki sinov rejimida `SMS_DEV_MODE=true`), kirish sahifasida **"SMS kod"** yorlig'i paydo bo'ladi.
@@ -55,7 +75,7 @@ Telefon raqami bor har kim SMS kod bilan ham kira oladi. O'quvchiga telefon ixti
 
 ## Demo
 
-Demo foydalanuvchilar paroli **246810**: ota-ona `905555555`, o'qituvchi `903333333`, o'quvchi `kamila.karimova`,
+Demo foydalanuvchilar paroli **246810**: ota-ona `905555555`, o'qituvchi `903333333` (u 5-A dagi Sherzod Karimovning ota-onasi ham: kirishda profil tanlanadi), o'quvchi `kamila.karimova`,
 administrator `907777777`, direktor `901111111`, super admin `900000000`.
 
 ## Muassasa turi: maktab yoki o'quv markazi

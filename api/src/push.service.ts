@@ -60,12 +60,24 @@ export class PushService {
     return role === "student" ? l.replace(/^\/parent/, "/student") : role === "parent" ? l.replace(/^\/student/, "/parent") : l;
   }
 
+  /**
+   * Bildirishnoma kimning qurilmalariga: shu profil va o'sha kishining shu muassasadagi boshqa
+   * profillari (o'qituvchi telefoni o'qituvchi profilida obuna bo'lsa ham farzandi haqidagi xabar keladi).
+   */
+  private owners(userId: string): string[] {
+    const u = this.store.user(userId);
+    if (!u?.phone || !u.institutionId) return [userId];
+    return [userId, ...this.store.db.users.filter((x) => x.id !== userId && x.active && x.phone === u.phone && x.institutionId === u.institutionId).map((x) => x.id)];
+  }
+
   private async deliver(items: AppNotification[]) {
-    const ids = [...new Set(items.map((n) => n.userId))];
+    const owners = new Map(items.map((n) => [n.userId, this.owners(n.userId)]));
+    const ids = [...new Set([...owners.values()].flat())];
     const subs = await this.sql.query<{ endpoint: string; user_id: string; lang: Lang; data: unknown }>(
       "SELECT endpoint, user_id, lang, data FROM push_subscriptions WHERE user_id = ANY($1::text[])", [ids]);
     for (const n of items) {
-      for (const s of subs.filter((x) => x.user_id === n.userId)) {
+      const mine = new Set(owners.get(n.userId));
+      for (const s of subs.filter((x) => mine.has(x.user_id))) {
         const sub = typeof s.data === "string" ? JSON.parse(s.data) : s.data;
         // Rasm (yuz kesimi) push'ga qo'shilmaydi: hajm cheklovi va maxfiylik, ilovada ko'rinadi.
         const payload = JSON.stringify({ title: "EduNazorat", body: notificationTextPlain(s.lang, n), tag: n.id, url: this.link(n) });

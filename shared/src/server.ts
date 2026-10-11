@@ -11,7 +11,7 @@ import { parseCommandInput } from "./validation";
 import { isValidGrade } from "./grades";
 import { newId } from "./ids";
 import { formatReceiptId, newReceiptId, usedReceiptIds } from "./receipt";
-import { makeStudentLogin, usedLogins } from "./credentials";
+import { makeStudentLogin, phoneProfiles, phoneTaken, usedLogins } from "./credentials";
 import { classIdsOf, gradesEnabled, inClass, notifyTargets, updateEnrollments } from "./membership";
 import {
   notifyAnnouncement, notifyAttendance, notifyDebt, notifyGrade, notifyHomework, notifyMessage, notifyPayment,
@@ -25,6 +25,7 @@ import {
   DEFAULT_SETTINGS,
   type AppNotification, type AppUser, type Database, type Lead, type Lesson, type SchoolClass, type Student, type Thread,
 } from "./types";
+import { findAttendance } from "./lookup";
 
 interface Ctx {
   db: Database;
@@ -76,12 +77,11 @@ function checkAttachments(list: { size: number }[]) {
 function upsertPerson(ctx: Ctx, input: { name: string; phone: string }, role: AppUser["role"], extra: Partial<AppUser>): AppUser {
   const phone = normalizePhone(input.phone);
   if (!phone) throw new CommandError("err.phone", { phone: input.phone });
-  const existing = ctx.db.users.find((u) => u.phone === phone);
-  if (existing) {
-    if (existing.role !== role) throw new CommandError("err.phoneTaken", { phone: input.phone });
-    if (existing.institutionId && extra.institutionId && existing.institutionId !== extra.institutionId) throw new CommandError("err.phoneTaken", { phone: input.phone });
-    return { ...existing, name: input.name.trim() || existing.name, active: true };
-  }
+  // Shu muassasada shu rolda bo'lsa o'sha profil (masalan, aka-uka bolalarning ota-onasi).
+  // Boshqa rolda (o'qituvchi farzandi shu maktabda) yoki boshqa muassasada: alohida profil.
+  const existing = ctx.db.users.find((u) => u.phone === phone && u.role === role && u.institutionId === extra.institutionId);
+  if (existing) return { ...existing, name: input.name.trim() || existing.name, active: true };
+  if (phoneTaken(ctx.db, phone, role, extra.institutionId)) throw new CommandError("err.phoneTaken", { phone: input.phone });
   return { id: newId("u"), name: input.name.trim(), phone, role, subjects: [], childIds: [], active: true, ...extra };
 }
 
@@ -96,7 +96,7 @@ const handlers: { [K in CommandName]: Handler<K> } = {
     const notes: AppNotification[] = [];
     for (const m of marks) {
       const s = must(ctx.db.students.find((x) => x.id === m.studentId && inClass(x, cls.id)));
-      const prev = ctx.db.attendance.find((a) => a.studentId === s.id && a.lessonId === lessonId && a.day === day);
+      const prev = findAttendance(ctx.db.attendance, s.id, lessonId, day);
       const rec = {
         id: prev?.id ?? newId("a"), studentId: s.id, lessonId, day, status: m.status, source: m.source,
         markedAt: ctx.now, markedBy: ctx.actor.id, snapshot: isPresent(m.status) ? (m.snapshot ?? prev?.snapshot) : undefined, matchScore: m.score,
@@ -387,7 +387,7 @@ const handlers: { [K in CommandName]: Handler<K> } = {
     if (p.studentPhone?.trim()) {
       phone = normalizePhone(p.studentPhone) ?? "";
       if (!phone) throw new CommandError("err.phone", { phone: p.studentPhone });
-      if (ctx.db.users.some((u) => u.phone === phone && u.id !== prevAcc?.id)) throw new CommandError("err.phoneTaken", { phone: p.studentPhone });
+      if (phoneTaken(ctx.db, phone, "student", inst, prevAcc?.id)) throw new CommandError("err.phoneTaken", { phone: p.studentPhone });
     }
     const account: AppUser = prevAcc
       ? { ...prevAcc, name: p.name.trim(), phone, studentId: id, login: prevAcc.login || makeStudentLogin(p.name, usedLogins(ctx.db)) }
@@ -420,8 +420,7 @@ const handlers: { [K in CommandName]: Handler<K> } = {
     const prev = p.id ? must(ctx.db.users.find((u) => u.id === p.id && u.role === "teacher" && u.institutionId === inst)) : undefined;
     const phone = normalizePhone(p.phone);
     if (!phone) throw new CommandError("err.phone", { phone: p.phone });
-    const clash = ctx.db.users.find((u) => u.phone === phone && u.id !== prev?.id);
-    if (clash) throw new CommandError("err.phoneTaken", { phone: p.phone });
+    if (phoneTaken(ctx.db, phone, "teacher", inst, prev?.id)) throw new CommandError("err.phoneTaken", { phone: p.phone });
     const subjects = [...new Set(p.subjects.map((s) => s.trim()).filter(Boolean))];
     // Haq: berilmasa avvalgisi qoladi, null = olib tashlash
     let pay = prev?.pay;
@@ -571,7 +570,7 @@ const handlers: { [K in CommandName]: Handler<K> } = {
     const phone = normalizePhone(p.phone);
     if (!phone) throw new CommandError("err.phone", { phone: p.phone });
     const prev = p.id ? must(ctx.db.users.find((u) => u.id === p.id && u.role === "admin" && u.institutionId === inst)) : undefined;
-    if (ctx.db.users.some((u) => u.phone === phone && u.id !== prev?.id)) throw new CommandError("err.phoneTaken", { phone: p.phone });
+    if (phoneTaken(ctx.db, phone, "admin", inst, prev?.id)) throw new CommandError("err.phoneTaken", { phone: p.phone });
     // Filiallar: bo'sh = butun markaz
     const known = new Set((ctx.db.institutions.find((i) => i.id === inst)?.settings.branches ?? []).map((b) => b.id));
     const branchIds = p.branchIds === undefined ? prev?.branchIds : [...new Set(p.branchIds)].filter((b) => known.has(b));
@@ -660,13 +659,14 @@ export function executeCommand<K extends CommandName>(db: Database, actor: AppUs
 }
 
 /** Kirish mumkin bo'lgan foydalanuvchi (faol, muassasasi bloklanmagan). */
+/** SMS bilan kirish: telefon bo'yicha asosiy profil (bir nechta bo'lsa keyin almashtiriladi). */
 export function findLoginUser(db: Database, phone: string): AppUser {
   const p = normalizePhone(phone);
-  const u = p ? db.users.find((x) => x.phone === p && x.active) : undefined;
-  if (!u) throw new CommandError("err.userNotFound", {}, 404);
-  const inst = u.institutionId ? db.institutions.find((i) => i.id === u.institutionId) : undefined;
-  if (inst && !inst.active) throw new CommandError("err.institutionBlocked", {}, 403);
-  return u;
+  const all = p ? db.users.filter((x) => x.phone === p && x.active) : [];
+  if (!all.length) throw new CommandError("err.userNotFound", {}, 404);
+  const ok = phoneProfiles(db, p!);
+  if (!ok.length) throw new CommandError("err.institutionBlocked", {}, 403);
+  return ok[0];
 }
 
 /** Demo kirish: SMS yuborilmaydi, kod 1111. */

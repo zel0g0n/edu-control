@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { EventEmitter } from "node:events";
-import {
+import { warmIndexes,
   CommandError, STRUCTURAL_COMMANDS, applyPatch, assignMissingReceiptIds, ensureStudentAccounts, emptyDatabase, executeCommand, seedDatabase,
   type AppUser, type CollectionName, type CommandMap, type CommandName, type Database, type Patch,
 } from "@edunazorat/shared";
@@ -126,6 +126,7 @@ export class StoreService implements OnModuleInit, OnModuleDestroy {
     }
     this.db = db;
     this.seq = seq;
+    warmIndexes(db as unknown as Parameters<typeof warmIndexes>[0]);
   }
 
   /** Boshqa nusxalar yozgan o'zgarishlarni xotiraga qo'llash (ketma-ket). */

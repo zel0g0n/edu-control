@@ -9,7 +9,8 @@ import {
 
 import { BarChart, HBars, LineChart } from "@/components/charts";
 import { PageBody, PageHeader } from "@/components/shell";
-import { Avatar, avgTone, btn, Card, DataTable, EmptyState, gradeTone, Section, Select, toneText } from "@/components/ui";
+import { Avatar, avgTone, btn, Card, cx, DataTable, EmptyState, gradeTone, Section, Select, toneText } from "@/components/ui";
+import { useAttendanceFrom } from "@/lib/data/history";
 import { useApp } from "@/lib/data/store";
 import { exportXlsx } from "@/lib/export";
 import { fmt, termLabel } from "@/lib/format";
@@ -32,6 +33,8 @@ export default function DirectorReports() {
     return { from: addDays(app.today, -n + 1), to: app.today, label: t("Oxirgi {n} kun", { n }) };
   }, [period, terms, app.today, t]);
 
+  // Chorak tanlansa: boshlang'ich yuklashdagi 35 kundan eskisi serverdan olinadi
+  const ready = useAttendanceFrom(range.from);
   const att = app.db.attendance.filter((a) => a.day >= range.from && a.day <= range.to);
   const grades = app.db.grades.filter((g) => g.day >= range.from && g.day <= range.to && g.type !== "term" && g.type !== "year");
   const days = range.from <= range.to ? daysBetween(range.from, range.to).filter((d) => isoWeekday(d) !== 7) : [];
@@ -44,20 +47,40 @@ export default function DirectorReports() {
   const billing = months.map((m) => ({ m, ...billingTotals(allInv.filter((i) => i.month === m)) }));
 
   // O'qituvchilar faolligi: o'tgan darslardan nechtasida davomat olingan.
-  const teacherRows = teachers.map((u) => {
-    const ls = app.db.lessons.filter((l) => l.teacherId === u.id);
-    let held = 0, marked = 0;
-    for (const d of days) for (const l of ls.filter((x) => x.weekday === isoWeekday(d))) {
-      held++;
-      if (att.some((a) => a.lessonId === l.id && a.day === d)) marked++;
+  // Bir martalik indekslar (o'qituvchi x kun x dars x yozuvlar emas)
+  const markedSlots = new Set(att.map((a) => `${a.lessonId}|${a.day}`));
+  const group = <T,>(list: T[], key: (x: T) => string) => {
+    const m = new Map<string, T[]>();
+    for (const x of list) {
+      const k = key(x);
+      const l = m.get(k);
+      if (l) l.push(x);
+      else m.set(k, [x]);
     }
-    return { u, held, marked, grades: grades.filter((g) => g.teacherId === u.id).length };
+    return m;
+  };
+  const lessonsByTeacher = group(app.db.lessons, (l) => l.teacherId);
+  const gradesByTeacher = group(grades, (g) => g.teacherId);
+  const attByStudent = group(att, (a) => a.studentId);
+  const gradesByStudent = group(grades, (g) => g.studentId);
+  const teacherRows = teachers.map((u) => {
+    const ls = lessonsByTeacher.get(u.id) ?? [];
+    let held = 0, marked = 0;
+    for (const d of days) {
+      const wd = isoWeekday(d);
+      for (const l of ls) {
+        if (l.weekday !== wd) continue;
+        held++;
+        if (markedSlots.has(`${l.id}|${d}`)) marked++;
+      }
+    }
+    return { u, held, marked, grades: gradesByTeacher.get(u.id)?.length ?? 0 };
   });
 
   // E'tibor talab qiladigan o'quvchilar.
   const risk = students.map((s) => {
-    const a = attendanceRate(att.filter((r) => r.studentId === s.id));
-    const g = weightedAverage(grades.filter((x) => x.studentId === s.id));
+    const a = attendanceRate(attByStudent.get(s.id) ?? []);
+    const g = weightedAverage(gradesByStudent.get(s.id) ?? []);
     return { s, a, g };
   }).filter((x) => (x.a !== null && x.a < 0.8) || (x.g !== null && x.g < 3.2))
     .sort((a, b) => (a.g ?? 5) - (b.g ?? 5));
@@ -85,7 +108,8 @@ export default function DirectorReports() {
           </Select>
         } />
       <PageBody>
-        <div className="grid grid-cols-1 gap-x-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {!ready && <p className="mb-3 text-sm text-muted" aria-live="polite">{t("Eski davomat ma'lumotlari yuklanmoqda…")}</p>}
+        <div className={cx("grid grid-cols-1 gap-x-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]", !ready && "opacity-50")}>
           <Section title={t("Davomat dinamikasi")}>
             <Card className="p-4">
               {trend.some((x) => x.rate !== null) ? (

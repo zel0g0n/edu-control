@@ -9,6 +9,7 @@ import { translate } from "@/lib/i18n";
 import { notificationText } from "@/lib/notif";
 import { enablePush, pushState, showSystemNotification } from "@/lib/push";
 import { MfaSetupScreen } from "./mfa";
+import { ProfileChooser } from "./profiles";
 import { cx } from "./ui";
 
 type ToastKind = "ok" | "error" | "info";
@@ -106,7 +107,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={show}>
       {/* Rahbariyat 2FA'ni yoqmaguncha ilova ochilmaydi */}
-      {store.mfaSetupNeeded ? <MfaSetupScreen /> : children}
+      {/* Bir telefonda bir nechta profil (o'qituvchi va ota-ona): kirishdan keyin tanlash */}
+      {store.mfaSetupNeeded ? <MfaSetupScreen /> : store.profileChoice ? <ProfileChooser /> : children}
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex justify-center px-4 md:bottom-8">
         {toast && (
           <div key={toast.id} role="status"

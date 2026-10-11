@@ -106,7 +106,7 @@ export function seedDatabase(now: number): Database {
   );
 
   const roster: [string, string, string, string[]][] = [
-    ["c_5a", "inst_school", "s_a", ["Aziz Karimov", "Madina Tursunova", "Sherzod Olimov", "Zarina Abdullayeva", "Javohir Rashidov", "Sevara Qosimova", "Bobur Hakimov", "Nilufar Saidova"]],
+    ["c_5a", "inst_school", "s_a", ["Aziz Karimov", "Madina Tursunova", "Sherzod Karimov", "Zarina Abdullayeva", "Javohir Rashidov", "Sevara Qosimova", "Bobur Hakimov", "Nilufar Saidova"]],
     ["c_7b", "inst_school", "s_b", ["Kamila Karimova", "Doniyor Ismoilov", "Laylo Yoqubova", "Temur Salimov", "Mohira Jo'rayeva", "Ulugbek Nurmatov", "Shahzoda Fayzullayeva", "Otabek Usmonov"]],
     ["c_ielts", "inst_center", "s_c", ["Diyora Xolmatova", "Islom Sobirov", "Farangiz Mahmudova", "Sanjar Ibragimov", "Ruxshona Alimova", "Akmal Yusupov"]],
     ["c_sat", "inst_center", "s_d", ["Behruz Karimov", "Malika Yo'ldosheva", "Jamshid Tursunov"]],
@@ -117,7 +117,12 @@ export function seedDatabase(now: number): Database {
       const sid = `${prefix}${i}`;
       const parentIds: string[] = [];
       if (sid === "s_a0" || sid === "s_b0") parentIds.push("u_parent");
-      else {
+      else if (sid === "s_a2") {
+        // O'qituvchi (Dilnoza Karimova) farzandi shu maktabda: bitta telefon, ikki profil
+        ++phoneSeq;
+        parentIds.push("u_tparent");
+        user({ id: "u_tparent", name: "Dilnoza Karimova", phone: "998903333333", role: "parent", institutionId: inst, childIds: [sid] });
+      } else {
         const pid = `p_${sid}`;
         parentIds.push(pid);
         user({ id: pid, name: `${name.split(" ")[1]} (ota-ona)`, phone: `9989911${String(10000 + ++phoneSeq * 37).slice(-5)}`, role: "parent", institutionId: inst, childIds: [sid] });

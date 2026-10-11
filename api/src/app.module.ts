@@ -16,6 +16,7 @@ import { ClusterService } from "./cluster.service";
 import { LimitsService } from "./limits.service";
 import { PaymentsService } from "./payments.service";
 import { PushService } from "./push.service";
+import { SnapshotsService } from "./snapshots.service";
 import { RealtimeService } from "./realtime.service";
 import { StoreService } from "./store.service";
 
@@ -28,7 +29,7 @@ export class AppModule {
       providers: [
         { provide: CONFIG, useValue: config },
         { provide: SQL, useValue: sql },
-        ClusterService, StoreService, SessionService, MfaService, LimitsService, AuditService, CredentialsService, SmsService, OtpService, TokenService, AuthGuard, RealtimeService, PushService, PaymentsService, NvrKeyGuard,
+        ClusterService, StoreService, SessionService, MfaService, LimitsService, AuditService, CredentialsService, SmsService, OtpService, TokenService, AuthGuard, RealtimeService, PushService, PaymentsService, NvrKeyGuard, SnapshotsService,
       ],
     };
   }

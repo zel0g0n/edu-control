@@ -2,7 +2,7 @@ import { CommandError, invoiceRemaining } from "@edunazorat/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { AppStore } from "../data/store";
-import { LocalTransport } from "../data/transport";
+import { LocalTransport } from "../data/local-transport";
 
 // Payshanba, 8-oktabr 2026, 10:00
 const NOW = new Date(2026, 9, 8, 10, 0).getTime();
@@ -145,7 +145,12 @@ describe("administrator boshqaruvi", () => {
     // Ota-onani olib tashlash
     await d.run("student.save", { id: s.id, name: s.name, classId: "c_5a", parents: [{ name: "Ota", phone: "998930000001" }] });
     expect(d.userById("u_parent")!.childIds).not.toContain(s.id);
-    await expectErr(d.run("student.save", { name: "X", classId: "c_5a", parents: [{ name: "O'qituvchi", phone: "998903333333" }] }), "err.phoneTaken");
+    // O'qituvchi raqami ota-ona sifatida: o'qituvchining alohida ota-ona profili (u_tparent)
+    const tp = await d.run("student.save", { name: "X Karimov", classId: "c_5a", parents: [{ name: "O'qituvchi", phone: "998903333333" }] });
+    expect(tp.upsert!.students![0].parentIds).toEqual(["u_tparent"]);
+    expect(d.userById("t_math")!.childIds).toEqual([]);
+    // Super admin raqami band
+    await expectErr(d.run("student.save", { name: "X", classId: "c_5a", parents: [{ name: "S", phone: "998900000000" }] }), "err.phoneTaken");
   });
 
   it("o'qituvchi, sinf va jadval to'qnashuvi", async () => {
@@ -198,7 +203,8 @@ describe("administrator boshqaruvi", () => {
     const admin = a.upsert!.users![0];
     expect(admin).toMatchObject({ role: "admin", institutionId: "inst_school" });
     await dir.run("admin.setActive", { id: admin.id, active: false });
-    await expectErr(dir.run("admin.save", { name: "Y", phone: "90 333 33 33" }), "err.phoneTaken");
+    await expectErr(dir.run("admin.save", { name: "Y", phone: "90 777 77 77" }), "err.phoneTaken");
+    await expectErr(dir.run("admin.save", { name: "Y", phone: "90 000 00 00" }), "err.phoneTaken");
     // Administrator boshqa administrator qo'sha olmaydi
     const adm = await as(SCHOOL_ADMIN);
     await expectErr(adm.run("admin.save", { name: "Z", phone: "97 555 44 34" }), "err.forbidden");

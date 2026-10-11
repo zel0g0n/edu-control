@@ -26,3 +26,5 @@ export * from "./integration";
 export * from "./scope";
 export * from "./i18n";
 export * from "./notify-text";
+export * from "./lookup";
+export * from "./face-pack";

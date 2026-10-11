@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { api, apiLogin, login } from "./helpers";
+import { api, apiLogin, login, pickProfile } from "./helpers";
 
 test("o'qituvchi davomat oladi → ota-onaga real vaqtda xabar keladi", async ({ browser }) => {
   // Ota-ona oynasi ochiq turadi
@@ -12,6 +12,7 @@ test("o'qituvchi davomat oladi → ota-onaga real vaqtda xabar keladi", async ({
   const teacherCtx = await browser.newContext();
   const teacher = await teacherCtx.newPage();
   await login(teacher, "903333333");
+  await pickProfile(teacher, "O'qituvchi");
   await expect(teacher).toHaveURL(/\/teacher/);
   const tok = await apiLogin("903333333");
   const boot = await api<{ lessons: { id: string; teacherId: string; classId: string }[] }>("/bootstrap", tok);

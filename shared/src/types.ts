@@ -338,6 +338,11 @@ export interface Database {
   notifications: AppNotification[];
   /** Yangi qiziqqanlar (sinov darsi, o'quvchiga aylanish). */
   leads: Lead[];
+  /**
+   * Faqat mijozga yuborilganda: davomat shu kundan boshlab berilgan (eskisi kerak bo'lganda alohida so'raladi).
+   * Bo'lmasa — to'liq.
+   */
+  attendanceFrom?: string;
 }
 
 export function emptyDatabase(): Database {

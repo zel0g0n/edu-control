@@ -44,8 +44,7 @@ export default function DirectorClasses() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {classes.map((c) => {
               const students = app.studentsOfClass(c.id);
-              const ids = new Set(students.map((s) => s.id));
-              const rate = attendanceRate(app.db.attendance.filter((a) => ids.has(a.studentId) && a.day >= addDays(app.today, -30)));
+              const rate = attendanceRate(students.flatMap((s) => app.attendanceOfStudentBetween(s.id, addDays(app.today, -30), app.today)));
               const homeroom = c.homeroomTeacherId ? app.userById(c.homeroomTeacherId) : undefined;
               return (
                 <Card key={c.id} className="flex flex-col p-4">

@@ -36,19 +36,64 @@ export function loginOf(u: AppUser): string {
   return u.login || (u.phone ? `+${u.phone}` : "");
 }
 
-/** Kiritilgan login bo'yicha foydalanuvchi: harf bo'lsa login, raqam bo'lsa telefon. */
-export function findUserByLogin(db: Pick<Database, "users" | "institutions">, raw: string): AppUser {
+/** Kirishda bir telefonda bir nechta profil bo'lsa: shu tartibda birinchisi ochiladi. */
+const PROFILE_ORDER: Record<AppUser["role"], number> = { superAdmin: 0, director: 1, admin: 2, teacher: 3, student: 4, parent: 5 };
+export const byProfileOrder = (a: AppUser, b: AppUser) => PROFILE_ORDER[a.role] - PROFILE_ORDER[b.role];
+
+function institutionActive(db: Pick<Database, "institutions">, u: AppUser): boolean {
+  const inst = u.institutionId ? db.institutions.find((i) => i.id === u.institutionId) : undefined;
+  return !inst || inst.active;
+}
+
+/**
+ * Bir kishi bir nechta rolda bo'lishi mumkin (masalan, o'qituvchi va shu maktabdagi bolaning
+ * ota-onasi): har rol alohida profil, telefon raqami bir xil. Faol profillar, ustuvorlik tartibida.
+ */
+export function phoneProfiles(db: Pick<Database, "users" | "institutions">, phone: string): AppUser[] {
+  return db.users.filter((u) => u.active && u.phone === phone && institutionActive(db, u)).sort(byProfileOrder);
+}
+
+/**
+ * Kiritilgan login bo'yicha profillar: harf bo'lsa login (bitta), raqam bo'lsa telefon (bir nechta bo'lishi mumkin).
+ * Hech biri bo'lmasa err.badLogin; faqat bloklangan muassasada bo'lsa err.institutionBlocked.
+ */
+export function findLoginCandidates(db: Pick<Database, "users" | "institutions">, raw: string): AppUser[] {
   const s = String(raw ?? "").trim().toLowerCase();
-  let u: AppUser | undefined;
-  if (/[a-z]/.test(s)) u = db.users.find((x) => x.active && x.login === s);
+  let all: AppUser[];
+  if (/[a-z]/.test(s)) all = db.users.filter((x) => x.active && x.login === s);
   else {
     const phone = normalizePhone(s);
-    u = phone ? db.users.find((x) => x.active && x.phone === phone) : undefined;
+    all = phone ? db.users.filter((x) => x.active && x.phone === phone) : [];
   }
-  if (!u) throw new CommandError("err.badLogin", {}, 401);
-  const inst = u.institutionId ? db.institutions.find((i) => i.id === u.institutionId) : undefined;
-  if (inst && !inst.active) throw new CommandError("err.institutionBlocked", {}, 403);
-  return u;
+  if (!all.length) throw new CommandError("err.badLogin", {}, 401);
+  const ok = all.filter((u) => institutionActive(db, u)).sort(byProfileOrder);
+  if (!ok.length) throw new CommandError("err.institutionBlocked", {}, 403);
+  return ok;
+}
+
+/** Kiritilgan login bo'yicha asosiy profil. */
+export function findUserByLogin(db: Pick<Database, "users" | "institutions">, raw: string): AppUser {
+  return findLoginCandidates(db, raw)[0];
+}
+
+/**
+ * Kirgan profildan parolsiz o'tish mumkin bo'lgan profillar: o'sha telefon, o'sha muassasa,
+ * rahbariyat roli emas (direktor/administrator profiliga faqat o'z paroli va 2FA bilan kiriladi).
+ * Boshqa muassasadagi profil ham faqat o'z paroli bilan: bir muassasa administratori parol berib
+ * boshqa muassasa ma'lumotiga yo'l ochmasligi uchun.
+ */
+export function linkedProfiles(db: Pick<Database, "users" | "institutions">, u: AppUser): AppUser[] {
+  if (!u.phone || !u.institutionId) return [];
+  return phoneProfiles(db, u.phone).filter((x) => x.id !== u.id && x.institutionId === u.institutionId && !needsStrongPassword(x.role));
+}
+
+/**
+ * Yangi profil uchun telefon band emasmi: bitta muassasada bir rolda bitta profil; super admin raqami umuman band.
+ * Boshqa rol (o'qituvchi + ota-ona) yoki boshqa muassasa — alohida profil sifatida ruxsat.
+ */
+export function phoneTaken(db: Pick<Database, "users">, phone: string, role: AppUser["role"], institutionId: string | undefined, exceptId?: string): boolean {
+  return db.users.some((u) => u.id !== exceptId && u.phone === phone
+    && (u.role === "superAdmin" || role === "superAdmin" || (u.role === role && u.institutionId === institutionId)));
 }
 
 /** Tasodifiy 6 xonali parol (111111, 123456 kabi oson ketma-ketliklarsiz). */

@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query, R
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Request, Response } from "express";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { CommandError, findUserByLogin, scopeDatabase, scopePatch, type AppUser, type CommandMap, type CommandName, type Lang } from "@edunazorat/shared";
+import { CommandError, attendanceBetween, bootstrapFor, canSeeStudent, packDatabase, packPatch, dayKey, findUserByLogin, linkedProfiles, scopeDatabase, scopePatch, type AppUser, type CommandMap, type CommandName, type Lang } from "@edunazorat/shared";
 
 import { AllowMfaSetup, AuthGuard, CurrentSession, CurrentUser } from "./auth/auth.guard";
 import { MfaService } from "./auth/mfa.service";
@@ -17,6 +17,7 @@ import { LimitsService } from "./limits.service";
 import { PaymentsService, type ClickRequest } from "./payments.service";
 import { PushService } from "./push.service";
 import { RealtimeService } from "./realtime.service";
+import { SnapshotsService } from "./snapshots.service";
 import { StoreService } from "./store.service";
 
 const COMMANDS = new Set<string>([
@@ -58,6 +59,7 @@ export class AppController {
     @Inject(PaymentsService) private readonly payments: PaymentsService,
     @Inject(SQL) private readonly sql: Sql,
     @Inject(CONFIG) private readonly config: Config,
+    @Inject(SnapshotsService) private readonly snapshots: SnapshotsService,
   ) {}
 
   @Get("health")
@@ -289,6 +291,33 @@ export class AppController {
     return { revoked: n };
   }
 
+  /**
+   * Shu kishining profillari (bir telefon, bir muassasa): masalan, o'qituvchi va shu maktabdagi
+   * bolaning ota-onasi. Rahbariyat profillari ro'yxatda yo'q: ularga faqat o'z paroli va 2FA bilan.
+   */
+  @Get("auth/profiles")
+  @UseGuards(AuthGuard)
+  profiles(@CurrentUser() u: AppUser) {
+    const inst = (id?: string) => (id ? this.store.db.institutions.find((i) => i.id === id)?.name ?? "" : "");
+    return [u, ...linkedProfiles(this.store.db, u)].map((p) => ({ id: p.id, name: p.name, role: p.role, institution: inst(p.institutionId), current: p.id === u.id }));
+  }
+
+  /** Boshqa profilga o'tish: joriy sessiya yopiladi, tanlangan profil uchun yangi sessiya. */
+  @Post("auth/profiles/switch")
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  async switchProfile(@CurrentUser() u: AppUser, @CurrentSession() sid: string, @Body() b: { userId?: string }, @Req() req: Request, @Res({ passthrough: true }) out: Response) {
+    const target = linkedProfiles(this.store.db, u).find((p) => p.id === String(b?.userId ?? ""));
+    if (!target) throw new CommandError("err.forbidden", {}, 403);
+    // 2FA yoqilgan profilga 2FA'siz kirilgan profildan o'tib bo'lmaydi
+    if (this.mfa.enabled(target.id) && !this.mfa.enabled(u.id)) throw new CommandError("err.profileMfa", {}, 403);
+    const tokens = await this.issue(target.id, req, out);
+    await this.sessions.revoke(sid);
+    this.realtime.dropSession(sid);
+    void this.audit.record({ actor: u, action: "auth.switchProfile", target: target.id, details: { name: target.name, role: target.role }, ip: req.ip });
+    return { ...tokens, userId: target.id };
+  }
+
   /** Faoliyat jurnali: direktor (o'z muassasasi) va super admin. */
   @Get("audit")
   @UseGuards(AuthGuard)
@@ -302,7 +331,20 @@ export class AppController {
   @Get("bootstrap")
   @UseGuards(AuthGuard)
   bootstrap(@CurrentUser() u: AppUser) {
-    return scopeDatabase(this.store.db, u);
+    // Rahbariyat/o'qituvchi: davomat oxirgi 35 kunlik (eskisi /attendance orqali, kerak bo'lganda)
+    // Yuz namunalari ixcham (o'qituvchi: ~6 marta kichik)
+    return packDatabase(bootstrapFor(this.store.db, u, dayKey(this.store.clock())));
+  }
+
+  /** Davomat oralig'i (boshlang'ich yuklashdagi oynadan oldingi kunlar). Ko'rinish qoidalari bilan. */
+  @Get("attendance")
+  @UseGuards(AuthGuard)
+  attendance(@CurrentUser() u: AppUser, @Query("from") from?: string, @Query("to") to?: string) {
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    if (!re.test(String(from)) || !re.test(String(to)) || String(from) > String(to)) throw new CommandError("err.invalid", { field: "from" }, 400);
+    // Bir so'rovda ko'pi bilan ~13 oy
+    if (Date.parse(String(to)) - Date.parse(String(from)) > 400 * 86_400_000) throw new CommandError("err.invalid", { field: "to" }, 400);
+    return attendanceBetween(this.store.db, u, String(from), String(to));
   }
 
   @Post("commands/:name")
@@ -312,12 +354,16 @@ export class AppController {
     await this.limits.command(u.id);
     if (!COMMANDS.has(name)) throw new CommandError("err.unknownCommand", { name }, 404);
     if (typeof input !== "object" || input === null) throw new CommandError("err.required", { field: "body" }, 400);
+    // Rasmlar (yuz kesimi, namuna surati) yozuv ichida emas — fayl sifatida
+    const bytes = name === "attendance.mark" ? await this.snapshots.extract(u.id, (input as { marks?: unknown }).marks)
+      : name === "face.enroll" ? await this.snapshots.extractPhoto(u.id, input as { studentId?: unknown; photo?: unknown }) : 0;
+    if (bytes) await this.limits.upload(u.id, bytes);
     const patch = await this.store.run(u, name as CommandName, input as CommandMap[CommandName]);
     const inp = input as { id?: unknown; institutionId?: unknown };
     const inst = u.institutionId ?? (typeof inp.institutionId === "string" ? inp.institutionId : undefined)
       ?? (name.startsWith("institution.") ? (typeof inp.id === "string" ? inp.id : patch.upsert?.institutions?.[0]?.id) : undefined);
     void this.audit.command(u, name, input, patch, req.ip ?? "", inst);
-    return scopePatch(this.store.db, this.store.user(u.id) ?? u, patch);
+    return packPatch(scopePatch(this.store.db, this.store.user(u.id) ?? u, patch));
   }
 
   /** Real vaqt ulanishi uchun bir martalik chipta (token URL'da yuborilmaydi). */
@@ -362,8 +408,12 @@ export class AppController {
   async signFiles(@CurrentUser() u: AppUser, @Body() b: { ids?: unknown }) {
     const ids = (Array.isArray(b?.ids) ? b.ids : []).filter((x): x is string => typeof x === "string" && FILE_ID_RE.test(x)).slice(0, 100);
     if (!ids.length) return {};
-    const visible = this.visibleFileIds(u);
-    const own = new Set((await this.sql.query<{ id: string }>("SELECT id FROM files WHERE id = ANY($1::text[]) AND owner_id = $2", [ids, u.id])).map((r) => r.id));
+    const rows = await this.sql.query<{ id: string; owner_id: string; student_id: string | null }>("SELECT id, owner_id, student_id FROM files WHERE id = ANY($1::text[])", [ids]);
+    const own = new Set(rows.filter((r) => r.owner_id === u.id).map((r) => r.id));
+    // Yuz kesimi: o'quvchini ko'ra oladigan har kim (o'qituvchi, ota-onasi, rahbariyat)
+    const seeStudent = canSeeStudent(this.store.db, u);
+    for (const r of rows) if (r.student_id && seeStudent(r.student_id)) own.add(r.id);
+    const visible = ids.every((id) => own.has(id)) ? new Set<string>() : this.visibleFileIds(u);
     const exp = Math.floor(Date.now() / 1000) + FILE_LINK_TTL_S;
     const out: Record<string, string> = {};
     for (const id of ids) {

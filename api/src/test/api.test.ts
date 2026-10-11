@@ -471,6 +471,111 @@ describe("sessiyalar", () => {
   });
 });
 
+describe("bir kishi — bir nechta profil", () => {
+  it("o'qituvchi kiradi va farzandining ota-ona profiliga o'tadi (eski sessiya yopiladi)", async () => {
+    const l = await call<{ token: string; userId: string }>("/auth/login", { login: "903333333", password: "246810" });
+    assert.equal(l.data.userId, "t_math");
+    const list = await call<{ id: string; role: string; current: boolean }[]>("/auth/profiles", undefined, l.data.token);
+    assert.deepEqual(list.data.map((p) => [p.id, p.role, p.current]), [["t_math", "teacher", true], ["u_tparent", "parent", false]]);
+    // Begona profilga emas
+    assert.equal((await call("/auth/profiles/switch", { userId: "u_parent" }, l.data.token)).status, 403);
+    const sw = await call<{ token: string; userId: string }>("/auth/profiles/switch", { userId: "u_tparent" }, l.data.token);
+    assert.equal(sw.status, 200, JSON.stringify(sw.data));
+    assert.equal(sw.data.userId, "u_tparent");
+    assert.equal((await call("/bootstrap", undefined, l.data.token)).status, 401);
+    const boot = await call<Database>("/bootstrap", undefined, sw.data.token);
+    assert.deepEqual(boot.data.students.map((x) => x.id), ["s_a2"]);
+    assert.equal(boot.data.homeworks.every((h) => boot.data.classes.some((c) => c.id === h.classId && c.id === "c_5a")), true);
+    const back = await call<{ userId: string }>("/auth/profiles/switch", { userId: "t_math" }, sw.data.token);
+    assert.equal(back.data.userId, "t_math");
+  });
+
+  it("direktor ota-ona profiliga o'tadi, ota-ona profilidan direktorga o'tib bo'lmaydi", async () => {
+    const admin = await login("998907777777");
+    const add = await call("/commands/student.save", { name: "Direktor Farzandi", classId: "c_5a", parents: [{ name: "Nodira Yusupova", phone: "90 111 11 11" }] }, admin);
+    assert.equal(add.status, 200, JSON.stringify(add.data));
+    const d = await call<{ token: string; userId: string }>("/auth/login", { login: "901111111", password: "246810" });
+    assert.equal(d.data.userId, "u_dir");
+    const list = await call<{ id: string; role: string }[]>("/auth/profiles", undefined, d.data.token);
+    const parent = list.data.find((p) => p.role === "parent")!;
+    const sw = await call<{ token: string }>("/auth/profiles/switch", { userId: parent.id }, d.data.token);
+    assert.equal(sw.status, 200);
+    const back = await call<{ id: string }[]>("/auth/profiles", undefined, sw.data.token);
+    assert.deepEqual(back.data.map((p) => p.id), [parent.id]);
+    assert.equal((await call("/auth/profiles/switch", { userId: "u_dir" }, sw.data.token)).status, 403);
+  });
+});
+
+describe("tezlik: katta ma'lumot", () => {
+  it("yuz kesimi yozuvga emas, faylga; faqat o'quvchini ko'ra oladiganlarga", async () => {
+    const t = (await call<{ token: string }>("/auth/login", { login: "903333333", password: "246810" })).data.token;
+    const boot = await call<Database>("/bootstrap", undefined, t);
+    const lesson = boot.data.lessons.find((l) => l.teacherId === "t_math" && l.classId === "c_7b")!;
+    const day = addDays(new Date().toISOString().slice(0, 10), -2);
+    const snap = "data:image/jpeg;base64," + Buffer.from("yuz-kesimi-rasm").toString("base64");
+    const r = await call<Patch>("/commands/attendance.mark", { lessonId: lesson.id, day, marks: [{ studentId: "s_b0", status: "present", source: "face", snapshot: snap, score: 0.7 }] }, t);
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    const url = r.data.upsert!.attendance![0].snapshot!;
+    assert.match(url, /\/files\/[0-9a-f]{32}$/);
+    const id = /([0-9a-f]{32})$/.exec(url)![1];
+    // Kamilaning ota-onasi ko'radi, boshqa ota-ona ko'rmaydi
+    const parent = await login("998905555555");
+    const signed = await call<Record<string, string>>("/files/sign", { ids: [id] }, parent);
+    assert.ok(signed.data[id]);
+    const img = await fetch(signed.data[id]);
+    assert.equal(img.status, 200);
+    assert.equal(Buffer.from(await img.arrayBuffer()).toString(), "yuz-kesimi-rasm");
+    const strangerPhone = app.get(StoreService).db.users.find((u) => u.role === "parent" && u.childIds.includes("s_b3"))!.phone;
+    const stranger = await login(strangerPhone);
+    assert.deepEqual((await call<Record<string, string>>("/files/sign", { ids: [id] }, stranger)).data, {});
+  });
+
+  it("boshlang'ich yuklash: rahbariyatga davomat 35 kunlik, eskisi alohida; javob siqilgan", async () => {
+    const store = app.get(StoreService);
+    const old = addDays(new Date().toISOString().slice(0, 10), -60);
+    const lesson = store.db.lessons.find((l) => l.classId === "c_7b")!;
+    store.db.attendance.push({ id: "a_old_test", studentId: "s_b1", lessonId: lesson.id, day: old, status: "absent", source: "manual", markedAt: Date.now(), markedBy: "t_math" });
+    const dir = await login("998901111111");
+    const res = await fetch(base + "/bootstrap", { headers: { Authorization: `Bearer ${dir}`, "Accept-Encoding": "br, gzip" } });
+    assert.equal(res.headers.get("content-encoding"), "br");
+    const boot = (await res.json()) as Database;
+    assert.ok(boot.attendanceFrom && boot.attendanceFrom > old);
+    assert.ok(!boot.attendance.some((a) => a.id === "a_old_test"));
+    const hist = await call<{ id: string }[]>(`/attendance?from=${old}&to=${addDays(boot.attendanceFrom!, -1)}`, undefined, dir);
+    assert.ok(hist.data.some((a) => a.id === "a_old_test"));
+    assert.equal((await call(`/attendance?from=x&to=${old}`, undefined, dir)).status, 400);
+    // Ota-ona: o'z farzandi to'liq (oynasiz)
+    const pboot = await call<Database>("/bootstrap", undefined, await login("998905555555"));
+    assert.equal(pboot.data.attendanceFrom, undefined);
+    // Ota-ona tarix so'rovida begona bolani (s_b1) ko'rmaydi
+    const sh = await call<{ studentId: string }[]>(`/attendance?from=${old}&to=${old}`, undefined, await login("998905555555"));
+    assert.equal(sh.status, 200);
+    assert.ok(sh.data.every((a) => a.studentId === "s_a0" || a.studentId === "s_b0"));
+  });
+
+  it("yuz namunasi: tarmoqda ixcham (int8), serverda asl; namuna surati — fayl", async () => {
+    const t = (await call<{ token: string }>("/auth/login", { login: "903333333", password: "246810" })).data.token;
+    const tpl = Array.from({ length: 512 }, (_, i) => Math.sin(i) / 16);
+    const photo = "data:image/jpeg;base64," + Buffer.from("namuna-surati").toString("base64");
+    const r = await call<Patch & { upsert: { students: (Database["students"][number] & { faceQ?: string[] })[] } }>("/commands/face.enroll", { studentId: "s_b2", templates: [tpl, tpl], photo, model: "ghostfacenet-w1.3-s1" }, t);
+    assert.equal(r.status, 200, JSON.stringify(r.data).slice(0, 200));
+    const st = r.data.upsert.students[0];
+    assert.equal(st.faceTemplates.length, 0);
+    assert.equal(st.faceQ?.length, 2);
+    // Serverda asl sonlar
+    const mem = app.get(StoreService).db.students.find((x) => x.id === "s_b2")!;
+    assert.equal(mem.faceTemplates[0].length, 512);
+    assert.match(mem.facePhoto ?? "", /\/files\/[0-9a-f]{32}$/);
+    const tb = await call<{ students: (Database["students"][number] & { faceQ?: string[] })[] }>("/bootstrap", undefined, t);
+    assert.equal(tb.data.students.find((x) => x.id === "s_b2")!.faceQ?.length, 2);
+    const db = await call<Database>("/bootstrap", undefined, await login("998901111111"));
+    const ds = db.data.students.find((x) => x.id === "s_b2") as Database["students"][number] & { faceQ?: string[] };
+    // Rahbariyat ham oladi (sozlamalardagi "o'xshash yuzlar" tekshiruvi, holat belgisi) — ixcham
+    assert.deepEqual(ds.faceTemplates, []);
+    assert.equal(ds.faceQ?.length, 2);
+  });
+});
+
 describe("so'rov cheklovlari", () => {
   it("IP bo'yicha login, foydalanuvchi bo'yicha fayl hajmi (hisoblagich bazada)", async () => {
     const l = new LimitsService(sql, { rateLimitScale: 1 });

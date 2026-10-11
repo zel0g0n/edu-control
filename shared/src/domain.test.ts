@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   arrivalStatus, attendanceRate, billingTotals, clickPaymentUrl, findConflicts, invoicesToCreate, normalizePhone,
   assignMissingReceiptIds, buildInvoices, canManageCredentials, classIdsOf, lessonCount, tuitionFor, executeCommand, inClass, notifyTargets, translate, updateEnrollments, formatReceiptId, generatePassword, invoiceForAccount, isWeakPin, makeStudentLogin, parseReceiptId,
-  applyPatch, base32Decode, base32Encode, checkNewPassword, newBackupCodes, totpCode, totpStep, verifyTotp, holidayDays, holidayOn, payrollFor, paymePaymentUrl, scopeDatabase, scopePatch, seedDatabase, suggestTermGrade, summarizeDay, weightedAverage, type AttendanceRecord, type Grade, type Lesson, type Student,
+  applyPatch, registerRussian, RU, packDatabase, unpackDatabase, packTemplate, unpackTemplate, findLoginCandidates, findLoginUser, linkedProfiles, phoneProfiles, base32Decode, base32Encode, checkNewPassword, newBackupCodes, totpCode, totpStep, verifyTotp, holidayDays, holidayOn, payrollFor, paymePaymentUrl, scopeDatabase, scopePatch, seedDatabase, suggestTermGrade, summarizeDay, weightedAverage, type AttendanceRecord, type Grade, type Lesson, type Student,
 } from "./index";
+
+registerRussian(RU);
 
 const NOW = new Date(2026, 9, 8, 10, 0).getTime(); // payshanba
 const L = (id: string, start: string, end: string, extra: Partial<Lesson> = {}): Lesson =>
@@ -85,7 +87,9 @@ describe("demo baza", () => {
     const sids = new Set(db.students.map((s) => s.id));
     expect(db.grades.every((g) => sids.has(g.studentId))).toBe(true);
     expect(db.users.find((u) => u.phone === "998904444444")?.studentId).toBe("s_b0");
-    expect(new Set(db.users.map((u) => u.phone).filter(Boolean)).size).toBe(db.users.filter((u) => u.phone).length);
+    // Bir telefon — bir muassasada bir rolda bitta profil (o'qituvchi + ota-ona bo'lishi mumkin)
+    const keys = db.users.filter((u) => u.phone).map((u) => `${u.phone}|${u.role}|${u.institutionId ?? ""}`);
+    expect(new Set(keys).size).toBe(keys.length);
     expect(seedDatabase(NOW)).toEqual(db);
   });
   it("telefon raqam", () => {
@@ -622,5 +626,83 @@ describe("TOTP (ikki bosqichli kirish)", () => {
     expect(await verifyTotp(secret, "000000", now)).toBeNull();
     expect(base32Decode(base32Encode(new Uint8Array([1, 2, 3, 250])))).toEqual(new Uint8Array([1, 2, 3, 250]));
     expect(newBackupCodes()).toHaveLength(10);
+  });
+});
+
+describe("bir kishi — bir nechta profil", () => {
+  it("o'qituvchi farzandi shu maktabda: ikki profil, kirishda o'qituvchi, ota-onaga o'tish mumkin", () => {
+    const db = seedDatabase(NOW);
+    const all = findLoginCandidates(db, "90 333 33 33");
+    expect(all.map((u) => u.role)).toEqual(["teacher", "parent"]);
+    expect(findLoginUser(db, "998903333333").role).toBe("teacher");
+    const teacher = all[0];
+    expect(linkedProfiles(db, teacher).map((u) => u.id)).toEqual(["u_tparent"]);
+    // Ota-ona profili faqat o'z farzandini ko'radi, o'qituvchi sinflarini emas
+    const asParent = scopeDatabase(db, all[1]);
+    expect(asParent.students.map((s) => s.id)).toEqual(["s_a2"]);
+    expect(asParent.lessons.every((l) => l.classId === "c_5a")).toBe(true);
+  });
+
+  it("administrator o'qituvchi raqamini ota-ona sifatida qo'sha oladi (alohida profil)", () => {
+    const db = seedDatabase(NOW);
+    const adm = db.users.find((u) => u.id === "u_adm")!;
+    const p = executeCommand(db, adm, "student.save", { name: "Yangi Bola", classId: "c_7b", parents: [{ name: "Gulnora Rahimova", phone: "90 666 66 61" }] }, NOW);
+    applyPatch(db, p);
+    const profiles = phoneProfiles(db, "998906666661");
+    expect(profiles.map((u) => u.role)).toEqual(["teacher", "parent"]);
+    expect(profiles[1].id).not.toBe("t_uzb");
+    // Ikkinchi farzand: o'sha ota-ona profili
+    applyPatch(db, executeCommand(db, adm, "student.save", { name: "Ikkinchi Bola", classId: "c_5a", parents: [{ name: "Gulnora Rahimova", phone: "90 666 66 61" }] }, NOW));
+    expect(phoneProfiles(db, "998906666661").length).toBe(2);
+    expect(phoneProfiles(db, "998906666661")[1].childIds.length).toBe(2);
+  });
+
+  it("rahbariyat profiliga parolsiz o'tib bo'lmaydi; boshqa muassasa profiliga ham", () => {
+    const db = seedDatabase(NOW);
+    const adm = db.users.find((u) => u.id === "u_adm")!;
+    // Direktor shu maktabda ota-ona ham
+    applyPatch(db, executeCommand(db, adm, "student.save", { name: "Direktor Farzandi", classId: "c_5a", parents: [{ name: "Nodira Yusupova", phone: "90 111 11 11" }] }, NOW));
+    const dir = db.users.find((u) => u.id === "u_dir")!;
+    const parent = phoneProfiles(db, "998901111111").find((u) => u.role === "parent")!;
+    expect(linkedProfiles(db, dir).map((u) => u.id)).toEqual([parent.id]);
+    expect(linkedProfiles(db, parent)).toEqual([]);
+    // Boshqa muassasada ota-ona: alohida, bog'lanmaydi
+    const adm2 = db.users.find((u) => u.id === "u_adm2")!;
+    applyPatch(db, executeCommand(db, adm2, "student.save", { name: "Markaz Bola", classId: "c_ielts", parents: [{ name: "D", phone: "90 333 33 33" }] }, NOW));
+    const t = db.users.find((u) => u.id === "t_math")!;
+    expect(phoneProfiles(db, "998903333333").length).toBe(3);
+    expect(linkedProfiles(db, t).map((u) => u.id)).toEqual(["u_tparent"]);
+  });
+
+  it("bir muassasada bir rolda bitta profil; super admin raqami band", () => {
+    const db = seedDatabase(NOW);
+    const adm = db.users.find((u) => u.id === "u_adm")!;
+    expect(() => executeCommand(db, adm, "teacher.save", { name: "X", phone: "90 333 33 33", subjects: ["Kimyo"] }, NOW)).toThrow("err.phoneTaken");
+    expect(() => executeCommand(db, adm, "student.save", { name: "Y", classId: "c_5a", parents: [{ name: "S", phone: "90 000 00 00" }] }, NOW)).toThrow("err.phoneTaken");
+    // Ota-ona raqami o'qituvchi sifatida: ruxsat (alohida profil)
+    expect(() => executeCommand(db, adm, "teacher.save", { name: "Feruza Karimova", phone: "90 555 55 55", subjects: ["Kimyo"] }, NOW)).not.toThrow();
+  });
+});
+
+describe("yuz namunasi uzatishda ixcham", () => {
+  it("int8: hajm ~6 marta kichik, kosinus o'xshashlik deyarli o'zgarmaydi", () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+    const norm = (v: number[]) => { const n = Math.hypot(...v); return v.map((x) => x / n); };
+    const cos = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0) / (Math.hypot(...a) * Math.hypot(...b));
+    for (let k = 0; k < 20; k++) {
+      const a = norm(Array.from({ length: 512 }, rnd));
+      const b = norm(a.map((x) => x + rnd() * 0.05));
+      const qa = unpackTemplate(packTemplate(a));
+      expect(Math.abs(cos(qa, b) - cos(a, b))).toBeLessThan(0.003);
+      expect(packTemplate(a).length).toBeLessThan(JSON.stringify(a.map((x) => Math.round(x * 1e5) / 1e5)).length / 5);
+    }
+    const db = seedDatabase(NOW);
+    db.students[0].faceTemplates = [norm(Array.from({ length: 512 }, rnd))];
+    const wire = JSON.parse(JSON.stringify(packDatabase(db)));
+    const back = unpackDatabase(wire);
+    expect(back.students[0].faceTemplates[0].length).toBe(512);
+    expect((back.students[0] as { faceQ?: unknown }).faceQ).toBeUndefined();
+    expect(cos(back.students[0].faceTemplates[0], db.students[0].faceTemplates[0])).toBeGreaterThan(0.999);
   });
 });

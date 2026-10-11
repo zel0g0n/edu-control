@@ -11,6 +11,12 @@ export async function login(page: Page, who: string, password = PASSWORD) {
   await page.keyboard.press("Enter");
 }
 
+/** Bir telefonda bir nechta profil bo'lsa: kirishdan keyingi tanlash oynasida rolni tanlash. */
+export async function pickProfile(page: Page, role: string) {
+  await expect(page.getByRole("heading", { name: "Qaysi profil bilan kirasiz?" })).toBeVisible();
+  await page.getByRole("button", { name: new RegExp(`^${role}`) }).click();
+}
+
 /** API'ga to'g'ridan-to'g'ri (ikkinchi foydalanuvchi o'rnida). */
 export async function apiLogin(who: string): Promise<string> {
   const r = await fetch(`${API}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: who, password: PASSWORD }) });

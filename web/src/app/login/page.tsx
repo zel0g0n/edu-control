@@ -7,7 +7,7 @@ import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@edunazorat/shared";
 
 import { MfaLoginStep } from "@/components/mfa";
 import { errorText, Logo } from "@/components/providers";
-import { homeFor } from "@/components/shell";
+import { destinationFor } from "@/components/shell";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { btn, cx, inputCls, Segmented } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
@@ -37,7 +37,7 @@ export default function LoginPage() {
   const showDemo = app.mode === "local" || process.env.NEXT_PUBLIC_SHOW_DEMO === "1";
 
   useEffect(() => {
-    if (app.currentUser) router.replace(homeFor(app.currentUser.role));
+    if (app.currentUser) router.replace(destinationFor(app.currentUser.role));
   }, [app.currentUser, router]);
 
   useEffect(() => () => {
@@ -56,7 +56,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       const user = await app.signInPassword(l, p);
-      if (user) router.replace(homeFor(user.role));
+      if (user) router.replace(destinationFor(user.role));
       else setBusy(false);
     } catch (err) {
       setError(errorText(err));
@@ -97,7 +97,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       const user = await app.signIn(number, value);
-      if (user) router.replace(homeFor(user.role));
+      if (user) router.replace(destinationFor(user.role));
       else setBusy(false);
     } catch (err) {
       setError(errorText(err));
@@ -126,7 +126,7 @@ export default function LoginPage() {
         return;
       }
       const user = await app.signIn(p, r.devCode);
-      if (user) router.replace(homeFor(user.role));
+      if (user) router.replace(destinationFor(user.role));
       else setBusy(false);
     } catch (err) {
       setError(errorText(err));
@@ -185,7 +185,7 @@ export default function LoginPage() {
 
         <div className="mx-auto mt-10 w-full max-w-sm md:mt-0">
           {app.mfaChallenge ? (
-            <MfaLoginStep onDone={() => { if (app.currentUser) router.replace(homeFor(app.currentUser.role)); }}
+            <MfaLoginStep onDone={() => { if (app.currentUser) router.replace(destinationFor(app.currentUser.role)); }}
               onBack={() => { app.cancelMfa(); setPassword(""); setError(null); }} />
           ) : <>
           {smsAvailable && step === "phone" && (

@@ -12,6 +12,7 @@ import {
 } from "@edunazorat/shared";
 
 import { HolidayNote } from "./holiday";
+import { useAttendanceFrom } from "@/lib/data/history";
 import { useApp, type AppStore } from "@/lib/data/store";
 import { fmt, gradeComment, termLabel, weekdayName, weekdayShort } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
@@ -341,6 +342,7 @@ export function LearnerAttendance({ student: s }: { student: Student }) {
   const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
   const offset = isoWeekday(`${month}-01`) - 1;
   const days = Array.from({ length: daysInMonth }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
+  useAttendanceFrom(days[0]);
   const records = app.attendanceOfStudentBetween(s.id, days[0], days[days.length - 1]);
   const count = (st: AttendanceRecord["status"]) => records.filter((r) => r.status === st).length;
   const rate = attendanceRate(records);

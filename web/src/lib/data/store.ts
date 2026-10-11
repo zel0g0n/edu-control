@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import {
   CommandError,
+  addDays,
   applyPatch,
   dayKey,
   emptyDatabase,
@@ -30,9 +31,9 @@ import {
   type Thread,
 } from "@edunazorat/shared";
 
-import { setCurrentLang, setCurrentVocab, type Lang, type Vocab } from "../i18n";
-import { createTransport, type IssuedCredentials, type LiveEvent, type SignInResult, type Transport } from "./transport";
-export type { IssuedCredentials } from "./transport";
+import { loadLang, setCurrentLang, setCurrentVocab, type Lang, type Vocab } from "../i18n";
+import { createTransport, type IssuedCredentials, type LiveEvent, type ProfileInfo, type SignInResult, type Transport } from "./transport";
+export type { IssuedCredentials, ProfileInfo } from "./transport";
 
 export interface Session {
   userId: string | null;
@@ -104,7 +105,7 @@ export class AppStore {
   async boot() {
     if (this.status !== "idle") return;
     this.status = "loading";
-    this.transport ??= createTransport();
+    this.transport ??= await createTransport();
     try {
       const raw = window.localStorage.getItem(SESSION_KEY);
       if (raw) this.session = { ...this.session, ...JSON.parse(raw) };
@@ -112,15 +113,19 @@ export class AppStore {
       // sessiya yo'q
     }
     setCurrentLang(this.session.lang);
-    await this.reload();
+    // Rus tili: lug'at ma'lumot bilan parallel yuklanadi (birinchi chizishdan oldin tayyor)
+    await this.reload(loadLang(this.session.lang).catch(() => undefined));
   }
 
-  async reload() {
+  async reload(waitFor?: Promise<unknown>) {
     try {
       if (this.session.userId) {
         this.db = await this.transport!.bootstrap(this.session.userId);
         if (!this.currentUser) this.session = { ...this.session, userId: null, childId: null };
-        else this.startLive();
+        else {
+          this.startLive();
+          void this.loadProfiles();
+        }
       }
       this.status = "ready";
     } catch (e) {
@@ -136,12 +141,14 @@ export class AppStore {
         this.errorText = e instanceof Error ? e.message : String(e);
       }
     }
+    await waitFor;
     this.changed();
   }
 
   /** Testlar uchun: tayyor bazani yuklash. */
   load(db: Database, session: Partial<Session> = {}) {
     this.db = db;
+    this.profilesReady = true;
     this.session = { ...this.session, ...session };
     this.status = "ready";
     this.changed();
@@ -290,19 +297,92 @@ export class AppStore {
     return this.afterCredentials(r);
   }
 
-  private async finishSignIn(userId: string): Promise<AppUser> {
+  /** choose: yangi kirish — bir nechta profil bo'lsa qaysi biri bilan davom etish so'raladi. */
+  private async finishSignIn(userId: string, choose = true): Promise<AppUser> {
     this.db = await this.transport!.bootstrap(userId);
     const user = this.db.users.find((u) => u.id === userId)!;
     this.session = { ...this.session, userId, childId: user.childIds[0] ?? null };
     this.saveSession();
+    if (choose) {
+      await this.loadProfiles(false);
+      this.profileChoice = this.profiles.length > 1;
+    }
     this.startLive();
     this.changed();
+    return user;
+  }
+
+  // ------------------------------------------------------------ davomat tarixi
+
+  private historyLoads = new Map<string, Promise<void>>();
+
+  /**
+   * Katta muassasada boshlang'ich yuklashda davomat oxirgi 35 kunlik (attendanceFrom). Eski oy yoki chorak
+   * hisoboti ochilganda yetishmagan qismi serverdan olinadi va bazaga qo'shiladi.
+   */
+  ensureAttendance(from: string): Promise<void> {
+    const have = this.db.attendanceFrom;
+    if (!have || from >= have) return Promise.resolve();
+    const key = `${from}|${have}`;
+    let p = this.historyLoads.get(key);
+    if (!p) {
+      p = (async () => {
+        const recs = await this.transport!.attendanceRange(from, addDays(have, -1));
+        // Shu orada baza qayta yuklangan bo'lsa (boshqa oyna), natija eskirgan
+        if (this.db.attendanceFrom !== have) return;
+        applyPatch(this.db, { upsert: { attendance: recs } });
+        this.db.attendanceFrom = from;
+        this.changed();
+      })().finally(() => this.historyLoads.delete(key));
+      this.historyLoads.set(key, p);
+    }
+    return p;
+  }
+
+  // ------------------------------------------------------------ profillar
+
+  /** Shu kishining profillari (masalan, o'qituvchi va shu maktabdagi bolaning ota-onasi). */
+  profiles: ProfileInfo[] = [];
+  /** Kirishdan keyin profil tanlash oynasi. */
+  profileChoice = false;
+
+  /** Profillar ro'yxati yuklandi (sahifa boshqa profilniki bo'lsa, yo'naltirishdan oldin kutiladi). */
+  profilesReady = false;
+
+  async loadProfiles(notify = true): Promise<ProfileInfo[]> {
+    try {
+      this.profiles = await this.transport!.profiles();
+    } catch {
+      this.profiles = [];
+    }
+    this.profilesReady = true;
+    if (notify) this.changed();
+    return this.profiles;
+  }
+
+  /** Boshqa profilga o'tish: yangi sessiya, ma'lumotlar shu profil bo'yicha qayta yuklanadi. */
+  async switchProfile(userId: string): Promise<AppUser> {
+    if (userId === this.session.userId) {
+      this.profileChoice = false;
+      this.changed();
+      return this.currentUser!;
+    }
+    const r = await this.transport!.switchProfile(userId);
+    this.unlisten?.();
+    this.unlisten = null;
+    this.profileChoice = false;
+    this.mustChangePassword = false;
+    const user = await this.finishSignIn(r.userId, false);
+    await this.loadProfiles();
     return user;
   }
 
   async signOut() {
     this.mfaSetupNeeded = false;
     this.mfaChallenge = null;
+    this.profiles = [];
+    this.profilesReady = false;
+    this.profileChoice = false;
     this.unlisten?.();
     this.unlisten = null;
     await this.transport!.signOut();
@@ -314,9 +394,13 @@ export class AppStore {
 
   setLang(lang: Lang) {
     this.session = { ...this.session, lang };
-    setCurrentLang(lang);
     this.saveSession();
-    this.changed();
+    // Lug'at kelgach almashadi (o'zbek matni bilan rus aralash ko'rinmasligi uchun)
+    void loadLang(lang).catch(() => undefined).then(() => {
+      if (this.session.lang !== lang) return;
+      setCurrentLang(lang);
+      this.changed();
+    });
   }
 
   selectChild(id: string) {
@@ -361,6 +445,9 @@ export class AppStore {
   private expire() {
     this.unlisten?.();
     this.unlisten = null;
+    this.profiles = [];
+    this.profilesReady = false;
+    this.profileChoice = false;
     this.db = emptyDatabase();
     this.session = { ...this.session, userId: null, childId: null };
     this.saveSession();
@@ -396,7 +483,7 @@ export class AppStore {
   // ------------------------------------------------------------ qidiruv
 
   userById(id: string): AppUser | undefined {
-    return this.db.users.find((u) => u.id === id);
+    return this.byId("users", this.db.users).get(id);
   }
   institution(id?: string): Institution | undefined {
     return id ? this.db.institutions.find((i) => i.id === id) : undefined;
@@ -414,13 +501,13 @@ export class AppStore {
     return this.institution(this.currentUser?.institutionId);
   }
   student(id: string): Student | undefined {
-    return this.db.students.find((s) => s.id === id);
+    return this.byId("students", this.db.students).get(id);
   }
   schoolClass(id: string): SchoolClass | undefined {
-    return this.db.classes.find((c) => c.id === id);
+    return this.byId("classes", this.db.classes).get(id);
   }
   lesson(id: string): Lesson | undefined {
-    return this.db.lessons.find((l) => l.id === id);
+    return this.byId("lessons", this.db.lessons).get(id);
   }
   studentsOfClass(classId: string, includeArchived = false): Student[] {
     return this.db.students.filter((s) => inClass(s, classId) && (includeArchived || !s.archived)).sort(byName);
@@ -516,14 +603,49 @@ export class AppStore {
 
   // ------------------------------------------------------------ davomat
 
+  /**
+   * Guruhlangan indeks (davomat va baholar yuz minglab bo'lishi mumkin): har o'zgarishdan keyin
+   * birinchi so'rovda bir marta quriladi, keyingi so'rovlar to'g'ridan-to'g'ri. Sahifalarda har o'quvchi
+   * uchun butun ro'yxatni aylanib chiqish (o'quvchilar soni x yozuvlar soni) o'rniga.
+   */
+  private groupCache = new Map<string, { ver: number; arr: unknown[]; map: Map<string, unknown[]> }>();
+  private groups<T>(name: string, arr: T[], key: (x: T) => string): Map<string, T[]> {
+    const c = this.groupCache.get(name);
+    if (c && c.arr === arr && c.ver === this.version) return c.map as Map<string, T[]>;
+    const map = new Map<string, T[]>();
+    for (const x of arr) {
+      const k = key(x);
+      const l = map.get(k);
+      if (l) l.push(x);
+      else map.set(k, [x]);
+    }
+    this.groupCache.set(name, { ver: this.version, arr, map: map as Map<string, unknown[]> });
+    return map;
+  }
+  private idCache = new Map<string, { ver: number; arr: unknown[]; map: Map<string, unknown> }>();
+  private byId<T extends { id: string }>(name: string, arr: T[]): Map<string, T> {
+    const c = this.idCache.get(name);
+    if (c && c.arr === arr && c.ver === this.version) return c.map as Map<string, T>;
+    const map = new Map(arr.map((x) => [x.id, x]));
+    this.idCache.set(name, { ver: this.version, arr, map });
+    return map;
+  }
+  private attByStudent() { return this.groups("att:s", this.db.attendance, (a) => a.studentId); }
+  private attByLessonDay() { return this.groups("att:ld", this.db.attendance, (a) => `${a.lessonId}|${a.day}`); }
+  private gradesByStudent() { return this.groups("gr:s", this.db.grades, (g) => g.studentId); }
+
+  /** Kun bo'yicha davomat (bosh sahifa, hisobotlar). */
+  attendanceOnDay(day: string): AttendanceRecord[] {
+    return this.groups("att:d", this.db.attendance, (a) => a.day).get(day) ?? [];
+  }
   attendanceOfLesson(lessonId: string, day: string): AttendanceRecord[] {
-    return this.db.attendance.filter((a) => a.lessonId === lessonId && a.day === day);
+    return this.attByLessonDay().get(`${lessonId}|${day}`) ?? [];
   }
   attendanceRecord(studentId: string, lessonId: string, day: string): AttendanceRecord | undefined {
-    return this.db.attendance.find((a) => a.studentId === studentId && a.lessonId === lessonId && a.day === day);
+    return this.attendanceOfLesson(lessonId, day).find((a) => a.studentId === studentId);
   }
   attendanceOfStudentOn(studentId: string, day: string): AttendanceRecord[] {
-    return this.db.attendance.filter((a) => a.studentId === studentId && a.day === day);
+    return (this.attByStudent().get(studentId) ?? []).filter((a) => a.day === day);
   }
   daySummary(studentId: string, day: string) {
     const s = this.student(studentId);
@@ -532,28 +654,27 @@ export class AppStore {
   }
   /** O'quvchi davomatining kunlar bo'yicha tarixi (yangisi birinchi). */
   attendanceDays(studentId: string, limit = 30): string[] {
-    return [...new Set(this.db.attendance.filter((a) => a.studentId === studentId).map((a) => a.day))].sort().reverse().slice(0, limit);
+    return [...new Set((this.attByStudent().get(studentId) ?? []).map((a) => a.day))].sort().reverse().slice(0, limit);
   }
   attendanceOfStudentBetween(studentId: string, from: string, to: string): AttendanceRecord[] {
-    return this.db.attendance.filter((a) => a.studentId === studentId && a.day >= from && a.day <= to);
+    return (this.attByStudent().get(studentId) ?? []).filter((a) => a.day >= from && a.day <= to);
   }
 
   // ------------------------------------------------------------ baholar
 
   gradesOfStudent(studentId: string, opts: { subject?: string; from?: string; to?: string; includeFinal?: boolean } = {}): Grade[] {
-    return this.db.grades
+    return (this.gradesByStudent().get(studentId) ?? [])
       .filter((g) =>
-        g.studentId === studentId &&
         (!opts.subject || g.subject === opts.subject) &&
         (opts.includeFinal || (g.type !== "term" && g.type !== "year")) &&
         (!opts.from || g.day >= opts.from) && (!opts.to || g.day <= opts.to))
       .sort((a, b) => b.day.localeCompare(a.day) || b.createdAt - a.createdAt);
   }
   finalGrade(studentId: string, subject: string, termId: string, type: "term" | "year" = "term"): Grade | undefined {
-    return this.db.grades.find((g) => g.studentId === studentId && g.subject === subject && g.termId === termId && g.type === type);
+    return (this.gradesByStudent().get(studentId) ?? []).find((g) => g.subject === subject && g.termId === termId && g.type === type);
   }
   gradesOfLesson(lessonId: string, day: string): Grade[] {
-    return this.db.grades.filter((g) => g.lessonId === lessonId && g.day === day);
+    return this.groups("gr:ld", this.db.grades, (g) => `${g.lessonId ?? ""}|${g.day}`).get(`${lessonId}|${day}`) ?? [];
   }
 
   // ------------------------------------------------------------ vazifa
@@ -582,7 +703,7 @@ export class AppStore {
   // ------------------------------------------------------------ to'lov
 
   invoicesOfStudent(studentId: string): Invoice[] {
-    return this.db.invoices.filter((i) => i.studentId === studentId).sort((a, b) => b.month.localeCompare(a.month));
+    return [...(this.groups("inv:s", this.db.invoices, (i) => i.studentId).get(studentId) ?? [])].sort((a, b) => b.month.localeCompare(a.month));
   }
   invoicesOfInstitution(instId: string): Invoice[] {
     const ids = new Set(this.db.students.filter((s) => s.institutionId === instId).map((s) => s.id));

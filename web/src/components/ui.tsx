@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ArrowDown, ArrowUp, ChevronRight, Search, X } from "lucide-react";
 import type { AttendanceStatus, GradeType } from "@edunazorat/shared";
 
+import { useApp } from "@/lib/data/store";
 import { fmt } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
 
@@ -163,6 +164,22 @@ export function GradeBadge({
   );
 }
 
+/** data: rasm o'zi; server fayli (/files/…) imzolanadi (bir vaqtdagi so'rovlar bitta so'rovga yig'iladi). */
+function useSignedImage(image?: string): string | undefined {
+  const app = useApp();
+  const remote = !!image && /^https?:.*\/files\/[0-9a-f]{32}/.test(image);
+  const [signed, setSigned] = useState<{ key: string; url: string } | null>(null);
+  useEffect(() => {
+    if (!remote || !image) return;
+    let alive = true;
+    app.signFileUrls([image]).then((m) => { if (alive && m[image]) setSigned({ key: image, url: m[image] }); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [app, image, remote]);
+  if (!image) return undefined;
+  if (!remote) return image;
+  return signed?.key === image ? signed.url : undefined;
+}
+
 export function Avatar({
   name, size = 40, tone = "primary", image, ring,
 }: {
@@ -173,10 +190,12 @@ export function Avatar({
   ring?: Tone;
 }) {
   const ringCls = ring ? cx("ring-2 ring-offset-2 ring-offset-surface", ring === "ok" ? "ring-ok" : ring === "warn" ? "ring-warn" : ring === "bad" ? "ring-bad" : "ring-primary") : "";
-  if (image) {
+  // Server fayli (yuz kesimi): qisqa muddatli imzoli havola kerak; tayyor bo'lguncha bosh harflar
+  const src = useSignedImage(image);
+  if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={image} alt={name} width={size} height={size} className={cx("shrink-0 rounded-full object-cover", ringCls)} style={{ width: size, height: size }} />
+      <img src={src} alt={name} width={size} height={size} loading="lazy" decoding="async" className={cx("shrink-0 rounded-full object-cover", ringCls)} style={{ width: size, height: size }} />
     );
   }
   return (
@@ -483,7 +502,14 @@ export function DataTable<T>({
     });
   }, [rows, columns, sort]);
 
+  // Katta ro'yxat (800+ o'quvchi): avval 100 qator, qolgani tugma bilan — sahifa darhol ochiladi
+  const [limit, setLimit] = useState(PAGE_ROWS);
+  // Faqat ekranga mos ko'rinish chiziladi (kompyuter jadvali yoki telefon kartalari, ikkalasi emas)
+  const desktop = useDesktop();
+  const t = useT();
   if (rows.length === 0) return <>{empty}</>;
+  const shown = sorted.length > limit ? sorted.slice(0, limit) : sorted;
+  const more = sorted.length - shown.length;
 
   const alignCls = (a?: Column<T>["align"]) => (a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left");
   const clickable = !!(onRowClick || rowHref);
@@ -496,7 +522,7 @@ export function DataTable<T>({
   return (
     <>
       {/* Kompyuter */}
-      <div className="scroll-x hidden rounded-2xl border border-line bg-surface md:block">
+      {desktop && <div className="scroll-x hidden rounded-2xl border border-line bg-surface md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line text-[12px] font-semibold tracking-wide text-muted uppercase">
@@ -515,7 +541,7 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody className="tabular">
-            {sorted.map((row) => (
+            {shown.map((row) => (
               <tr
                 key={rowKey(row)}
                 className={cx("border-b border-line last:border-0", clickable && "cursor-pointer hover:bg-surface-2/60")}
@@ -530,10 +556,10 @@ export function DataTable<T>({
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
       {/* Telefon */}
-      <div className="flex flex-col divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface md:hidden">
-        {sorted.map((row) => wrap(row, cx("block px-4 py-3", clickable && "active:bg-surface-2"), (
+      {!desktop && <div className="flex flex-col divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface md:hidden">
+        {shown.map((row) => wrap(row, cx("block px-4 py-3", clickable && "active:bg-surface-2"), (
           <>
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">{first.cell(row)}</div>
@@ -550,8 +576,28 @@ export function DataTable<T>({
             </dl>
           </>
         )))}
-      </div>
+      </div>}
+      {more > 0 && (
+        <button type="button" className={cx(btn.outline, "mt-3 w-full")} onClick={() => setLimit((l) => l + PAGE_ROWS * 2)}>
+          {t("Yana ko'rsatish ({n} ta qoldi)", { n: more })}
+        </button>
+      )}
     </>
+  );
+}
+
+const PAGE_ROWS = 100;
+
+/** Kompyuter ekrani (md: 768px+). Brauzerda chiziladi: birinchi qiymat darhol to'g'ri. */
+function useDesktop(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia("(min-width: 768px)");
+      m.addEventListener("change", cb);
+      return () => m.removeEventListener("change", cb);
+    },
+    () => window.matchMedia("(min-width: 768px)").matches,
+    () => true,
   );
 }
 

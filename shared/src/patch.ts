@@ -1,6 +1,7 @@
 import type { Database } from "./types";
+import { positionOf } from "./lookup";
 
-export type CollectionName = Exclude<keyof Database, "version" | "seq">;
+export type CollectionName = Exclude<keyof Database, "version" | "seq" | "attendanceFrom">;
 type Item<K extends CollectionName> = Database[K][number];
 
 /** Buyruq natijasi: qaysi yozuvlar qo'shildi/o'zgardi yoki o'chdi. Server ham shu shaklni qaytaradi. */
@@ -9,16 +10,16 @@ export interface Patch {
   remove?: { [K in CollectionName]?: string[] };
 }
 
+const byId = (x: { id: string }) => x.id;
+
 export function applyPatch(db: Database, patch: Patch): void {
   for (const [name, items] of Object.entries(patch.upsert ?? {}) as [CollectionName, { id: string }[]][]) {
     const list = db[name] as unknown as { id: string }[];
-    const index = new Map(list.map((x, i) => [x.id, i]));
+    // Keshlangan id indeksi: har patchda butun ro'yxatni qayta indekslamaslik (davomat — yuz minglab)
     for (const item of items) {
-      const i = index.get(item.id);
-      if (i === undefined) {
-        index.set(item.id, list.length);
-        list.push(item);
-      } else list[i] = item;
+      const i = positionOf(list, "id", byId, item.id);
+      if (i < 0) list.push(item);
+      else list[i] = item;
     }
   }
   for (const [name, ids] of Object.entries(patch.remove ?? {}) as [CollectionName, string[]][]) {

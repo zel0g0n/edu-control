@@ -1,15 +1,27 @@
 import { RU_CENTER, UZ_CENTER, uzCenterWords } from "./center";
-import { RU } from "./ru";
 import { UZ } from "./uz";
 
 export type Lang = "uz" | "ru";
 export type Params = Record<string, string | number | undefined>;
 /** Atamalar: maktab (sinf) yoki o'quv markazi (guruh). */
 export type Vocab = "school" | "center";
-export { RU, UZ };
+export { UZ };
+export { RU } from "./ru";
+
+/**
+ * Ruscha lug'at (~90 KB) ro'yxatdan o'tkaziladi: brauzerda faqat rus tili tanlanganda yuklanadi
+ * (o'zbek tilidagi foydalanuvchilar uni yuklamaydi). Serverda ishga tushishda bir marta.
+ */
+let RU_DICT: Record<string, string> = {};
+export function registerRussian(dict: Record<string, string>): void {
+  RU_DICT = dict;
+}
+export function russianLoaded(): boolean {
+  return Object.keys(RU_DICT).length > 0;
+}
 
 function lookup(lang: Lang, key: string): string | undefined {
-  if (lang === "ru") return RU[key] ?? UZ[key];
+  if (lang === "ru") return RU_DICT[key] ?? UZ[key];
   return UZ[key];
 }
 
@@ -34,7 +46,7 @@ function centerTemplate(lang: Lang, key: string): string {
     if (ru) return ru;
     const plain = lookup(lang, key);
     // Ruscha tarjimasi yo'q (o'zbekcha qaytdi): o'zbekcha qoidasi bilan
-    return plain && RU[key] ? plain : uzCenterWords(UZ_CENTER[key] ?? plain ?? key);
+    return plain && RU_DICT[key] ? plain : uzCenterWords(UZ_CENTER[key] ?? plain ?? key);
   }
   return uzCenterWords(UZ_CENTER[key] ?? lookup(lang, key) ?? key);
 }

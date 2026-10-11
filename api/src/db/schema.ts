@@ -125,6 +125,9 @@ export const MIGRATIONS: string[] = [
      last_step bigint NOT NULL DEFAULT -1,
      updated_at timestamptz NOT NULL DEFAULT now()
    )`,
+  // Davomat yuz kesimi: yozuv ichida emas, fayl sifatida (kim ko'ra olishi o'quvchi bo'yicha)
+  `ALTER TABLE files ADD COLUMN IF NOT EXISTS student_id text`,
+  `CREATE INDEX IF NOT EXISTS files_student ON files (student_id) WHERE student_id IS NOT NULL`,
 ];
 
 /** Bir nechta nusxa bir vaqtda ishga tushsa ham migratsiyalar navbat bilan (Postgres advisory lock). */

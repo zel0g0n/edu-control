@@ -60,10 +60,23 @@ function invoiceByGroup(inv: Invoice, students: Map<string, Student>): Map<strin
   return out;
 }
 
+/** Davomat olingan darslar (dars|kun): har o'qituvchi uchun qayta hisoblamaslik (bitta ro'yxat — bitta to'plam). */
+const heldCache = new WeakMap<object, Map<string, Set<string>>>();
+function heldSlots(attendance: PayrollInput["attendance"], month: string): Set<string> {
+  let byMonth = heldCache.get(attendance);
+  if (!byMonth) heldCache.set(attendance, (byMonth = new Map()));
+  let set = byMonth.get(month);
+  if (!set) {
+    set = new Set(attendance.filter((a) => a.day.startsWith(month)).map((a) => `${a.lessonId}|${a.day}`));
+    byMonth.set(month, set);
+  }
+  return set;
+}
+
 export function payrollFor(teacher: AppUser, month: string, today: string, input: PayrollInput): PayrollRow {
   const mine = input.lessons.filter((l) => l.teacherId === teacher.id);
   const days = monthDays(month).filter((d) => d <= today && !input.holidays?.has(d));
-  const held = new Set(input.attendance.filter((a) => a.day.startsWith(month)).map((a) => `${a.lessonId}|${a.day}`));
+  const held = heldSlots(input.attendance, month);
   let scheduled = 0;
   let conducted = 0;
   for (const d of days) {

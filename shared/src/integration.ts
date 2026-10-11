@@ -10,6 +10,7 @@ import { newId } from "./ids";
 import { notifyAttendance } from "./notify";
 import type { Patch } from "./patch";
 import type { AppNotification, AttendanceRecord, AttendanceStatus, Database, Institution } from "./types";
+import { findAttendance } from "./lookup";
 
 export const NVR_API_VERSION = "v1";
 /** Kalit ko'rinishi: "edn_" + 48 ta hex belgi (192 bit). Serverda faqat SHA-256 xeshi saqlanadi. */
@@ -112,12 +113,14 @@ export function nvrAttendancePatch(db: Database, inst: Institution, input: NvrAt
       result.skipped.push({ studentId: s.id, reason: "badStatus" });
       continue;
     }
-    const prev = db.attendance.find((a) => a.studentId === s.id && a.lessonId === lesson.id && a.day === input.day);
+    const prev = findAttendance(db.attendance, s.id, lesson.id, input.day);
     if (prev && prev.source !== "nvr") {
       result.skipped.push({ studentId: s.id, reason: "teacherMarked" });
       continue;
     }
-    const snap = typeof m.snapshot === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(m.snapshot) && m.snapshot.length <= MAX_SNAPSHOT ? m.snapshot : undefined;
+    // data URL (to'g'ridan-to'g'ri) yoki server allaqachon faylga aylantirgan havola
+    const snap = typeof m.snapshot === "string" && m.snapshot.length <= MAX_SNAPSHOT
+      && (/^data:image\/(jpeg|png|webp);base64,/.test(m.snapshot) || /^https?:\/\/[^\s"'<>]+\/files\/[0-9a-f]{32}$/.test(m.snapshot)) ? m.snapshot : undefined;
     const seen = typeof m.seenAt === "number" && m.seenAt > 0 && m.seenAt <= now + 60_000 ? m.seenAt : now;
     const score = typeof m.confidence === "number" && m.confidence >= 0 && m.confidence <= 1 ? m.confidence : undefined;
     const rec: AttendanceRecord = {

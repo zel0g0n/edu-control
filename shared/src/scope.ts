@@ -2,6 +2,7 @@
 // qoidalar bilan filtrlaydi: ota-ona faqat o'z farzandini, o'qituvchi faqat
 // o'z sinflarini, direktor faqat o'z muassasasini ko'radi.
 import { branchLimit } from "./branches";
+import { addDays } from "./dates";
 import { classIdsOf } from "./membership";
 import type { CollectionName, Patch } from "./patch";
 import type { AppNotification, AppUser, Database, Student } from "./types";
@@ -181,3 +182,33 @@ export const STRUCTURAL_COMMANDS: readonly string[] = [
   "lesson.save", "lesson.delete", "class.save", "class.delete", "student.save", "student.archive",
   "teacher.save", "teacher.setActive", "admin.save", "institution.save", "institution.setActive", "settings.save", "term.save", "nvr.configure",
 ];
+
+/** Rahbariyat va o'qituvchiga boshlang'ich yuklashda davomat shuncha kunlik (bosh sahifa, 30 kunlik ko'rsatkichlar). */
+export const ATTENDANCE_WINDOW_DAYS = 35;
+
+/**
+ * Boshlang'ich yuklash: ko'rinish qoidalari + katta muassasada davomat oynasi. Maktabda davomat har kuni
+ * o'quvchi x dars yozuvi (800 o'quvchida yiliga ~1,5 mln): direktor brauzeriga hammasini yuborish shart emas.
+ * Ota-ona va o'quvchida faqat o'z farzandi — to'liq.
+ */
+export function bootstrapFor(db: Database, user: AppUser, today: string): Database {
+  const out = scopeDatabase(db, user);
+  if (user.role === "parent" || user.role === "student") return out;
+  const from = addDays(today, -ATTENDANCE_WINDOW_DAYS);
+  if (!out.attendance.some((a) => a.day < from)) return out;
+  return { ...out, attendance: out.attendance.filter((a) => a.day >= from), attendanceFrom: from };
+}
+
+/** Oynadan oldingi davomat (hisobotlar, oylik hisob-kitob, o'quvchi tarixi). */
+export function attendanceBetween(db: Database, user: AppUser, from: string, to: string) {
+  return filterList(scopeFor(db, user), "attendance", db.attendance.filter((a) => a.day >= from && a.day <= to) as never) as Database["attendance"];
+}
+
+/** Foydalanuvchi shu o'quvchini ko'ra oladimi (yuz kesimi fayllari uchun). */
+export function canSeeStudent(db: Database, user: AppUser): (studentId: string) => boolean {
+  const scope = scopeFor(db, user);
+  return (id) => {
+    const s = db.students.find((x) => x.id === id);
+    return !!s && scope.students(s) !== null;
+  };
+}

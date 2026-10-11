@@ -1,6 +1,6 @@
 import { Inject, Injectable, OnModuleDestroy } from "@nestjs/common";
 import type { Response } from "express";
-import { isEmptyPatch, scopePatch } from "@edunazorat/shared";
+import { isEmptyPatch, packPatch, scopePatch } from "@edunazorat/shared";
 
 import { SessionService } from "./auth/session.service";
 import { StoreService, type Change } from "./store.service";
@@ -83,7 +83,7 @@ export class RealtimeService implements OnModuleDestroy {
       if (c.structural && (u.role === "superAdmin" || !actorInst || u.institutionId === actorInst || u.childIds.some((id) => db.students.find((s) => s.id === id)?.institutionId === actorInst))) {
         event = "reload";
       } else {
-        const p = scopePatch(db, u, c.patch);
+        const p = packPatch(scopePatch(db, u, c.patch));
         if (!isEmptyPatch(p)) {
           event = "patch";
           data = JSON.stringify(p);
