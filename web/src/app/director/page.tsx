@@ -46,7 +46,7 @@ export default function DirectorHome() {
   const days: string[] = [];
   for (let d = today; days.length < 14; d = addDays(d, -1)) if (isoWeekday(d) !== 7) days.unshift(d);
   const trend = attendanceByDay(days, app.db.attendance);
-  const byClass = attendanceByClass(classes, students, app.db.attendance.filter((a) => a.day >= addDays(today, -30)));
+  const byClass = attendanceByClass(classes, students, app.db.attendance.filter((a) => a.day >= addDays(today, -30)), app.db.lessons);
 
   return (
     <>
@@ -107,7 +107,7 @@ export default function DirectorHome() {
                   {debtors.slice(0, 6).map(({ s, debt, overdue }) => (
                     <ListRow key={s.id} href={`/director/students/${s.id}`}
                       leading={<Avatar name={s.name} size={36} />}
-                      title={s.name} subtitle={app.schoolClass(s.classId)?.name}
+                      title={s.name} subtitle={app.classNamesOf(s)}
                       trailing={<span className="flex shrink-0 flex-col items-end"><span className="tabular text-sm font-semibold">{fmt.moneyShort(debt)}</span>{overdue && <span className="text-xs text-bad">{t("muddati o'tgan")}</span>}</span>} />
                   ))}
                 </ListCard>

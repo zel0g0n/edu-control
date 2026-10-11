@@ -3,11 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, GraduationCap, Plus, ScanFace, ShieldOff } from "lucide-react";
-import { addDays, attendanceRate, invoiceRemaining, weightedAverage } from "@edunazorat/shared";
+import { addDays, attendanceRate, inClass, invoiceRemaining, weightedAverage, type Student } from "@edunazorat/shared";
 
+import { useBranchFilter } from "@/components/director/branch";
 import { StudentForm } from "@/components/director/forms";
+import { ReceiptIdText } from "@/components/receipt-id";
 import { PageBody, PageHeader } from "@/components/shell";
-import { Avatar, avgTone, btn, Card, DataTable, EmptyState, Pill, SearchInput, Select, toneText } from "@/components/ui";
+import { Avatar, avgTone, btn, Card, cx, DataTable, EmptyState, Pill, SearchInput, Select, toneText } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
 import { exportXlsx } from "@/lib/export";
 import { fmt } from "@/lib/format";
@@ -23,13 +25,16 @@ export default function DirectorStudents() {
   const [classId, setClassId] = useState("");
   const [archived, setArchived] = useState(false);
   const [form, setForm] = useState(false);
-  const classes = app.classesOfInstitution(inst.id);
+  const branch = useBranchFilter();
+  const classes = app.classesOfInstitution(inst.id).filter(branch.matchClass);
   const term = app.currentTerm(inst.id);
   const ql = q.trim().toLowerCase();
   const rows = app.studentsOfInstitution(inst.id, true)
     .filter((s) => s.archived === archived)
-    .filter((s) => !classId || s.classId === classId)
-    .filter((s) => !ql || s.name.toLowerCase().includes(ql) || app.parentsOfStudent(s.id).some((p) => p.phone.includes(ql.replace(/\D/g, "") || "§")));
+    .filter(branch.matchStudent)
+    .filter((s) => !classId || inClass(s, classId))
+    .filter((s) => !ql || s.name.toLowerCase().includes(ql) || (!!s.receiptId && s.receiptId === ql.replace(/\D/g, ""))
+      || app.parentsOfStudent(s.id).some((p) => p.phone.includes(ql.replace(/\D/g, "") || "§")));
 
   const stats = (id: string) => ({
     att: attendanceRate(app.attendanceOfStudentBetween(id, addDays(app.today, -30), app.today)),
@@ -38,13 +43,13 @@ export default function DirectorStudents() {
   });
 
   const download = () => {
-    const header = [t("O'quvchi"), t("Sinf"), t("Ota-onalar"), t("Telefon"), t("Davomat (30 kun)"), t("O'rtacha baho"), t("Qarzdorlik"), t("Yuz namunasi")];
+    const header = [t("O'quvchi"), t("Kvitansiya ID"), t("Sinf"), t("Ota-onalar"), t("Telefon"), t("Davomat (30 kun)"), t("O'rtacha baho"), t("Qarzdorlik"), t("Yuz namunasi")];
     void exportXlsx(`${t("O'quvchilar")}_${app.today}.xlsx`, [{
       name: t("O'quvchilar"),
       rows: [header, ...rows.map((s) => {
         const st = stats(s.id);
         const ps = app.parentsOfStudent(s.id);
-        return [s.name, app.schoolClass(s.classId)?.name, ps.map((p) => p.name).join(", "), ps.map((p) => fmt.phone(p.phone)).join(", "),
+        return [s.name, s.receiptId ?? "", app.classNamesOf(s), ps.map((p) => p.name).join(", "), ps.map((p) => fmt.phone(p.phone)).join(", "),
           st.att === null ? "" : Math.round(st.att * 100) / 100, st.avg === null ? "" : Number(st.avg.toFixed(2)), st.debt, usableTemplates(s).length ? t("Bor") : needsReenroll(s) ? t("Qayta olish kerak") : s.parentConsent ? t("Yo'q") : t("Rozilik yo'q")];
       })],
     }]);
@@ -55,11 +60,12 @@ export default function DirectorStudents() {
       <PageHeader title={t("O'quvchilar")} subtitle={t("{n} nafar", { n: rows.length })}
         actions={<>
           <button type="button" className={btn.sm} onClick={download}><Download size={15} aria-hidden /> Excel</button>
-          <button type="button" className={btn.smPrimary} onClick={() => setForm(true)}><Plus size={16} aria-hidden /> {t("O'quvchi qo'shish")}</button>
+          {app.canManage && <button type="button" className={btn.smPrimary} onClick={() => setForm(true)}><Plus size={16} aria-hidden /> {t("O'quvchi qo'shish")}</button>}
         </>} />
       <PageBody>
-        <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-          <SearchInput value={q} onChange={setQ} placeholder={t("Ism yoki ota-ona telefoni")} />
+        <div className={cx("mb-3 grid gap-2", branch.select ? "sm:grid-cols-[1fr_auto_auto_auto]" : "sm:grid-cols-[1fr_auto_auto]")}>
+          <SearchInput value={q} onChange={setQ} placeholder={t("Ism, Kvitansiya ID yoki ota-ona telefoni")} />
+          {branch.select}
           <Select value={classId} onChange={setClassId} aria-label={t("Sinf")} className="sm:w-44">
             <option value="">{t("Barcha sinflar")}</option>
             {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -75,21 +81,21 @@ export default function DirectorStudents() {
           rowHref={(s) => `/director/students/${s.id}`}
           initialSort={{ key: "name", dir: 1 }}
           empty={<Card><EmptyState icon={GraduationCap} title={q || classId ? t("Hech narsa topilmadi") : t("Hali o'quvchi yo'q")}
-            action={!q && !classId && !archived && <button type="button" className={btn.smPrimary} onClick={() => setForm(true)}><Plus size={16} aria-hidden /> {t("O'quvchi qo'shish")}</button>} /></Card>}
+            action={app.canManage && !q && !classId && !archived && <button type="button" className={btn.smPrimary} onClick={() => setForm(true)}><Plus size={16} aria-hidden /> {t("O'quvchi qo'shish")}</button>} /></Card>}
           columns={[
             { key: "name", header: t("O'quvchi"), sort: (s) => s.name, cell: (s) => (
-              <span className="flex items-center gap-2.5"><Avatar name={s.name} image={s.facePhoto} size={32} /><span className="truncate font-medium">{s.name}</span></span>
+              <span className="flex items-center gap-2.5"><Avatar name={s.name} image={s.facePhoto} size={32} /><span className="min-w-0"><span className="block truncate font-medium">{s.name}</span><ReceiptIdText id={s.receiptId} className="block text-xs" /></span></span>
             ) },
-            { key: "class", header: t("Sinf"), sort: (s) => app.schoolClass(s.classId)?.name ?? "", cell: (s) => app.schoolClass(s.classId)?.name },
+            { key: "class", header: t("Sinf"), sort: (s) => app.classNamesOf(s), cell: (s) => app.classNamesOf(s) },
             { key: "parents", header: t("Ota-ona"), hideOnMobile: true, cell: (s) => {
               const ps = app.parentsOfStudent(s.id);
-              return ps.length ? <span className="text-muted">{fmt.phone(ps[0].phone)}{ps.length > 1 ? ` +${ps.length - 1}` : ""}</span> : <Pill tone="bad">{t("yo'q")}</Pill>;
+              return ps.length ? <span className="text-muted">{fmt.phone(ps[0].phone)}{ps.length > 1 ? ` +${ps.length - 1}` : ""}</span> : s.adult ? <Pill tone="slate">{t("katta yoshli")}</Pill> : <Pill tone="bad">{t("yo'q")}</Pill>;
             } },
             { key: "att", header: t("Davomat"), align: "right", sort: (s) => stats(s.id).att ?? -1, cell: (s) => fmt.percent(stats(s.id).att) },
-            { key: "avg", header: t("O'rtacha"), align: "right", sort: (s) => stats(s.id).avg ?? -1, cell: (s) => {
+            ...(!app.gradesOn(inst.id) ? [] : [{ key: "avg", header: t("O'rtacha"), align: "right" as const, sort: (s: Student) => stats(s.id).avg ?? -1, cell: (s: Student) => {
               const v = stats(s.id).avg;
               return <b className={toneText(avgTone(v))}>{v === null ? "—" : fmt.number(v, 2)}</b>;
-            } },
+            } }]),
             { key: "debt", header: t("Qarz"), align: "right", sort: (s) => stats(s.id).debt, cell: (s) => {
               const d = stats(s.id).debt;
               return d ? <span className="font-semibold text-bad">{fmt.moneyShort(d)}</span> : <span className="text-muted">—</span>;

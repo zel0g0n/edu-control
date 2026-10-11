@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 
 import { Providers } from "@/components/providers";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme-boot";
@@ -23,12 +24,14 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // src/proxy.ts bergan nonce: inline skript faqat shu bilan ishlaydi (CSP'da 'unsafe-inline' yo'q)
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html lang="uz" className="h-full antialiased" suppressHydrationWarning>
       <head>
         {/* Mavzu sahifa chizilishidan oldin qo'yiladi (miltillash bo'lmasin) */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}

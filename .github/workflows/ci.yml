@@ -1,0 +1,80 @@
+# Har push va pull request'da: tiplar, lint, barcha testlar, zaif kutubxonalar tekshiruvi va sayt build'i.
+# Biror qadam xato bersa GitHub qizil belgi ko'rsatadi: bunday versiyani serverga chiqarmang.
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Haqiqiy Postgres: API testlari va bir nechta server nusxasi testlari
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:ci@localhost:5432/edu_test
+      CLUSTER_DATABASE_URL: postgres://postgres:ci@localhost:5432/edu_cluster
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test bazalari
+        run: |
+          PGPASSWORD=ci psql -h localhost -U postgres -c "CREATE DATABASE edu_test"
+          PGPASSWORD=ci psql -h localhost -U postgres -c "CREATE DATABASE edu_cluster"
+      - name: Zaif kutubxonalar (production)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Tiplar
+        run: |
+          npx tsc --noEmit -p shared
+          npx tsc --noEmit -p api
+          npm run typecheck -w web
+      - name: Lint
+        run: npm run lint -w web
+      - name: Testlar (shared, api — haqiqiy Postgres va 2 nusxa, web)
+        run: npm test
+      - name: Sayt build
+        run: npm run build -w web
+
+  e2e:
+    # Boshdan-oxir: haqiqiy API + production sayt, brauzerda kirish, davomat, real vaqt, parol, jurnal, xavfsizlik
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w api
+      - run: npm run e2e:build -w web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npm run e2e -w web
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: web/test-results
+          retention-days: 7

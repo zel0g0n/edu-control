@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { BookOpen, MessagesSquare, ScanFace, ShieldOff } from "lucide-react";
-import { attendanceRate, addDays, weightedAverage } from "@edunazorat/shared";
+import { addDays, attendanceRate, weightedAverage, type Student } from "@edunazorat/shared";
 
 import { WeekSchedule } from "@/components/learner";
 import { useQueryParam } from "@/components/query";
@@ -27,7 +27,9 @@ export function ClassClient() {
   const mySubjects = cls ? app.subjectsOfTeacherInClass(me.id, cls.id) : [];
   const isHomeroom = cls?.homeroomTeacherId === me.id;
   // Sinf rahbari barcha fanlarni ko'radi (faqat o'qish), o'z fanini tahrirlaydi.
-  const subjects = cls ? (isHomeroom ? app.subjectsOfClass(cls.id) : mySubjects) : [];
+  // Baho tizimi o'chirilgan bo'lsa jurnal (baholar) ko'rsatilmaydi
+  const gradesOn = app.gradesOn(cls?.institutionId);
+  const subjects = cls && gradesOn ? (isHomeroom ? app.subjectsOfClass(cls.id) : mySubjects) : [];
   const qSubject = useQueryParam("subject");
   const qTab = useQueryParam("tab");
   const [tab, setTab] = useState<"journal" | "students" | "schedule">(qTab === "students" ? "students" : subjects.length ? "journal" : "students");
@@ -86,22 +88,22 @@ export function ClassClient() {
                 sort: (s) => attendanceRate(app.attendanceOfStudentBetween(s.id, addDays(app.today, -30), app.today)) ?? -1,
                 cell: (s) => fmt.percent(attendanceRate(app.attendanceOfStudentBetween(s.id, addDays(app.today, -30), app.today))),
               },
-              {
-                key: "avg", header: mySubjects[0] ? t("O'rtacha ({s})", { s: mySubjects[0] }) : t("O'rtacha"), align: "right",
-                sort: (s) => weightedAverage(app.gradesOfStudent(s.id, { subject: mySubjects[0], from: term?.startDay })) ?? -1,
-                cell: (s) => {
+              ...(!gradesOn ? [] : [{
+                key: "avg", header: mySubjects[0] ? t("O'rtacha ({s})", { s: mySubjects[0] }) : t("O'rtacha"), align: "right" as const,
+                sort: (s: Student) => weightedAverage(app.gradesOfStudent(s.id, { subject: mySubjects[0], from: term?.startDay })) ?? -1,
+                cell: (s: Student) => {
                   const v = weightedAverage(app.gradesOfStudent(s.id, { subject: mySubjects[0], from: term?.startDay }));
                   return <b className={toneText(avgTone(v))}>{v === null ? "—" : fmt.number(v, 2)}</b>;
                 },
-              },
+              }]),
               {
                 key: "face", header: t("Yuz namunasi"),
                 cell: (s) => !s.parentConsent ? <Pill tone="slate" icon={ShieldOff}>{t("Rozilik yo'q")}</Pill>
-                  : needsReenroll(s) ? <Link href={`/teacher/enroll/${s.id}`} className={cx(btn.smPrimary, "h-8 !bg-warn")}><ScanFace size={15} aria-hidden /> {t("Qayta olish kerak")}</Link>
+                  : needsReenroll(s) ? <Link href={`/teacher/enroll/${s.id}?from=${cls.id}`} className={cx(btn.smPrimary, "h-8 !bg-warn")}><ScanFace size={15} aria-hidden /> {t("Qayta olish kerak")}</Link>
                   : usableTemplates(s).length ? (
                     <span className="flex items-center gap-2"><Pill tone="ok" icon={ScanFace}>{t("Bor")}</Pill>
-                      <Link href={`/teacher/enroll/${s.id}`} className="text-xs text-primary hover:underline">{t("Yangilash")}</Link></span>
-                  ) : <Link href={`/teacher/enroll/${s.id}`} className={cx(btn.smPrimary, "h-8")}><ScanFace size={15} aria-hidden /> {t("Ro'yxatga olish")}</Link>,
+                      <Link href={`/teacher/enroll/${s.id}?from=${cls.id}`} className="text-xs text-primary hover:underline">{t("Yangilash")}</Link></span>
+                  ) : <Link href={`/teacher/enroll/${s.id}?from=${cls.id}`} className={cx(btn.smPrimary, "h-8")}><ScanFace size={15} aria-hidden /> {t("Ro'yxatga olish")}</Link>,
               },
               {
                 key: "msg", header: "", hideOnMobile: true, align: "right",

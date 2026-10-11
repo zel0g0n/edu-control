@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarRange, Clock, CreditCard, ScanFace, Wand2 } from "lucide-react";
-import type { InstitutionSettings, Term } from "@edunazorat/shared";
+import { CalendarPlus, CalendarRange, PartyPopper, Clock, CreditCard, MapPin, Plus, ScanFace, Star, Trash2, Wand2 } from "lucide-react";
+import { uzPublicHolidays, type InstitutionSettings, type Term } from "@edunazorat/shared";
 
 import { useRun } from "@/components/providers";
-import { PageBody, PageHeader } from "@/components/shell";
+import { PageBody, PageHeader, ReadOnlyNote } from "@/components/shell";
 import { btn, Card, cx, Field, inputCls, Pill } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
 import { FACE, faceThresholds } from "@/lib/face/config";
@@ -32,14 +32,33 @@ export default function DirectorSettings() {
   const students = app.studentsOfInstitution(inst.id);
   const diag = useMemo(() => faceDiagnostics(students.map((x) => ({ id: x.id, templates: usableTemplates(x) }))), [students]);
 
-  const save = () => run(() => app.run("settings.save", { settings: s }), t("Sozlamalar saqlandi"));
+  // Kelgusi 12 oydagi davlat bayramlari (mavjudlari takrorlanmaydi)
+  const addPublic = () => {
+    const y = Number(app.today.slice(0, 4));
+    const until = `${y + 1}${app.today.slice(4)}`;
+    const have = new Set((s.holidays ?? []).map((h) => h.from));
+    const add = [...uzPublicHolidays(y), ...uzPublicHolidays(y + 1)]
+      .filter((h) => h.to >= app.today && h.from <= until && !have.has(h.from))
+      .map((h) => ({ ...h, id: "", name: t(h.name) }));
+    set("holidays", [...(s.holidays ?? []), ...add].sort((a, b) => a.from.localeCompare(b.from)));
+  };
+
+  const save = async () => {
+    const p = await run(() => app.run("settings.save", { settings: s }), t("Sozlamalar saqlandi"));
+    // Yangi filiallar server bergan id bilan qaytadi: qayta saqlashda takrorlanmasin
+    const saved = p?.upsert?.institutions?.[0];
+    if (saved) setS((prev) => ({ ...prev, branches: saved.settings.branches, holidays: saved.settings.holidays }));
+  };
 
   return (
     <>
       <PageHeader title={t("Sozlamalar")} subtitle={inst.name}
-        actions={<button type="button" className={btn.smPrimary} disabled={!dirty} onClick={save}>{t("Saqlash")}</button>} />
+        actions={app.canManageSettings && <button type="button" className={btn.smPrimary} disabled={!dirty} onClick={save}>{t("Saqlash")}</button>} />
       <PageBody className="max-w-4xl">
-        <div className="flex flex-col gap-4">
+        {!app.canManage && <ReadOnlyNote />}
+        {app.branchLimited && <p className="mb-4 rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-muted">{t("Siz filial administratorisiz: sozlamalarni markaz administratori yoki direktor o'zgartiradi.")}</p>}
+        {/* Direktor sozlamalarni ko'radi, o'zgartirmaydi */}
+        <fieldset disabled={!app.canManageSettings} className="flex min-w-0 flex-col gap-4">
           <Block icon={Clock} title={t("Davomat va to'lov muddati")}>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label={t("Kechikish (daqiqa)")} hint={t("Dars boshlanganidan shuncha daqiqa o'tib kelsa: \"kechikdi\"")}>
@@ -48,6 +67,71 @@ export default function DirectorSettings() {
               <Field label={t("Oylik to'lov muddati (oyning kuni)")} hint={t("Hisob-varaqlar shu kungacha to'lanishi kerak")}>
                 <input type="number" min={1} max={28} className={inputCls} value={s.paymentDueDay} onChange={(e) => set("paymentDueDay", Number(e.target.value))} />
               </Field>
+            </div>
+          </Block>
+
+          <Block icon={Star} title={t("Baholash")}>
+            <label className="flex items-start gap-2.5">
+              <input type="checkbox" className="mt-0.5 size-4 accent-[var(--color-primary)]" checked={s.gradesEnabled !== false} onChange={(e) => set("gradesEnabled", e.target.checked)} />
+              <span className="text-sm">
+                <span className="block font-semibold">{t("Baho tizimi yoqilgan")}</span>
+                <span className="block text-muted">{t("O'chirilsa jurnal, baholar bo'limi va o'rtacha ball yashiriladi. Ko'p o'quv markazlari baho qo'ymaydi: davomat va to'lov yetarli.")}</span>
+              </span>
+            </label>
+          </Block>
+
+          <Block icon={MapPin} title={t("Filiallar")}>
+            <p className="mb-3 text-sm text-muted">
+              {t("Bir nechta manzilda dars o'tsangiz filiallarni qo'shing: guruhlarni filialga biriktirasiz, ro'yxat va to'lovlarni filial bo'yicha ko'rasiz. Bitta manzil bo'lsa bo'sh qoldiring.")}
+            </p>
+            <div className="flex flex-col gap-2">
+              {(s.branches ?? []).map((b, i) => {
+                const used = app.classesOfInstitution(inst.id).filter((c) => c.branchId && c.branchId === b.id).length;
+                const upd = (patch: Partial<typeof b>) => set("branches", (s.branches ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)));
+                return (
+                  <div key={b.id || `new${i}`} className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
+                    <input className={inputCls} value={b.name} placeholder={t("Nomi (masalan: Chilonzor)")} aria-label={t("Filial nomi")} onChange={(e) => upd({ name: e.target.value })} />
+                    <input className={inputCls} value={b.address ?? ""} placeholder={t("Manzil (ixtiyoriy)")} aria-label={t("Manzil")} onChange={(e) => upd({ address: e.target.value })} />
+                    <button type="button" className={btn.icon} disabled={used > 0} title={used ? t("{n} ta guruh biriktirilgan", { n: used }) : undefined}
+                      aria-label={t("Olib tashlash")} onClick={() => set("branches", (s.branches ?? []).filter((_, j) => j !== i))}><Trash2 size={17} /></button>
+                  </div>
+                );
+              })}
+              {app.canManageSettings && (
+                <button type="button" className={cx(btn.sm, "self-start")} onClick={() => set("branches", [...(s.branches ?? []), { id: "", name: "" }])}>
+                  <Plus size={15} aria-hidden /> {t("Filial qo'shish")}
+                </button>
+              )}
+            </div>
+          </Block>
+
+          <Block icon={PartyPopper} title={t("Dam olish kunlari")}>
+            <p className="mb-3 text-sm text-muted">
+              {t("Bayram va ta'til kunlari: bu kunlarda dars bo'lmaydi. Darsbay to'lovda va o'qituvchi ulushida dars soniga kirmaydi; oylik narx o'zgarmaydi. O'qituvchi, ota-ona va o'quvchilar bir kun oldin eslatma ko'radi.")}
+            </p>
+            <div className="flex flex-col gap-2">
+              {(s.holidays ?? []).map((h, i) => {
+                const upd = (patch: Partial<typeof h>) => set("holidays", (s.holidays ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)));
+                const past = (h.to || h.from) < app.today;
+                return (
+                  <div key={h.id || `new${i}`} className={cx("grid gap-2 sm:grid-cols-[1.4fr_1fr_1fr_auto]", past && "opacity-60")}>
+                    <input className={inputCls} value={h.name} placeholder={t("Nomi (masalan: Navro'z)")} aria-label={t("Nomi")} onChange={(e) => upd({ name: e.target.value })} />
+                    <input type="date" className={inputCls} value={h.from} aria-label={t("Boshlanishi")} onChange={(e) => upd({ from: e.target.value, to: !h.to || h.to < e.target.value ? e.target.value : h.to })} />
+                    <input type="date" className={inputCls} value={h.to} min={h.from} aria-label={t("Tugashi")} onChange={(e) => upd({ to: e.target.value })} />
+                    <button type="button" className={btn.icon} aria-label={t("Olib tashlash")} onClick={() => set("holidays", (s.holidays ?? []).filter((_, j) => j !== i))}><Trash2 size={17} /></button>
+                  </div>
+                );
+              })}
+              {app.canManageSettings && (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className={btn.sm} onClick={() => set("holidays", [...(s.holidays ?? []), { id: "", name: "", from: app.today, to: app.today }])}>
+                    <Plus size={15} aria-hidden /> {t("Dam olish kuni qo'shish")}
+                  </button>
+                  <button type="button" className={btn.sm} onClick={addPublic}>
+                    <CalendarPlus size={15} aria-hidden /> {t("Davlat bayramlarini qo'shish")}
+                  </button>
+                </div>
+              )}
             </div>
           </Block>
 
@@ -115,8 +199,8 @@ export default function DirectorSettings() {
               {app.termsOf(inst.id).map((term) => <TermRow key={term.id} term={term} />)}
             </div>
           </Block>
-        </div>
-        {dirty && (
+        </fieldset>
+        {app.canManageSettings && dirty && (
           <div className="sticky bottom-24 mt-4 flex justify-end md:bottom-4">
             <button type="button" className={cx(btn.primary, "shadow-lg")} onClick={save}>{t("O'zgarishlarni saqlash")}</button>
           </div>

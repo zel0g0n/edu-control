@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, ImageIcon, Paperclip, X } from "lucide-react";
 import type { Attachment } from "@edunazorat/shared";
 
@@ -77,9 +77,31 @@ function FileIcon({ type }: { type: string }) {
 }
 
 /** Biriktirilgan fayllar: rasmlar kichik ko'rinishda, boshqalari yuklab olish uchun. */
+/**
+ * Server fayllari faqat imzolangan qisqa muddatli havola bilan ochiladi: havola shu foydalanuvchiga
+ * bog'langan va 15 daqiqada eskiradi (havola tarqalib ketsa ham ochilmaydi).
+ */
+function useSignedUrls(items: Attachment[]): Record<string, string> {
+  const app = useApp();
+  const key = items.map((a) => a.url.length > 200 ? a.id : a.url).join("|");
+  const [state, setState] = useState<{ key: string; map: Record<string, string> }>({ key: "", map: {} });
+  useEffect(() => {
+    let alive = true;
+    const urls = items.map((a) => a.url).filter((u) => /^https?:/.test(u));
+    if (!urls.length) return;
+    app.signFileUrls(urls).then((map) => { if (alive) setState({ key, map }); }).catch(() => undefined);
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [app, key]);
+  return state.key === key ? state.map : {};
+}
+
 export function AttachmentList({ items }: { items: Attachment[] }) {
   const t = useT();
   const [preview, setPreview] = useState<Attachment | null>(null);
+  const signed = useSignedUrls(items);
+  // data: (demo) havolalar o'zi; server fayllari imzolangani tayyor bo'lguncha bo'sh
+  const src = (a: Attachment) => (a.url.startsWith("data:") ? a.url : signed[a.url]);
   if (items.length === 0) return null;
   const images = items.filter((a) => a.type.startsWith("image/"));
   const files = items.filter((a) => !a.type.startsWith("image/"));
@@ -90,13 +112,13 @@ export function AttachmentList({ items }: { items: Attachment[] }) {
           {images.map((a) => (
             <button key={a.id} type="button" onClick={() => setPreview(a)} className="overflow-hidden rounded-xl border border-line" aria-label={a.name}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={a.url} alt={a.name} className="size-20 object-cover" />
+              {src(a) ? <img src={src(a)} alt={a.name} className="size-20 object-cover" /> : <span className="block size-20 animate-pulse bg-surface-2" />}
             </button>
           ))}
         </div>
       )}
       {files.map((a) => (
-        <a key={a.id} href={a.url} download={a.name} target="_blank" rel="noreferrer"
+        <a key={a.id} href={src(a) ?? "#"} download={a.name} target="_blank" rel="noreferrer" aria-disabled={!src(a)}
           className="flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-2 hover:bg-surface-2">
           <FileIcon type={a.type} />
           <span className="min-w-0 flex-1">
@@ -107,8 +129,8 @@ export function AttachmentList({ items }: { items: Attachment[] }) {
       ))}
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.name} wide>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {preview && <img src={preview.url} alt={preview.name} className="mx-auto max-h-[70dvh] rounded-xl" />}
-        {preview && <a href={preview.url} download={preview.name} className={cx(btn.outline, "mt-3 w-full")}>{t("Yuklab olish")}</a>}
+        {preview && src(preview) && <img src={src(preview)} alt={preview.name} className="mx-auto max-h-[70dvh] rounded-xl" />}
+        {preview && <a href={src(preview) ?? "#"} download={preview.name} className={cx(btn.outline, "mt-3 w-full")}>{t("Yuklab olish")}</a>}
       </Modal>
     </div>
   );

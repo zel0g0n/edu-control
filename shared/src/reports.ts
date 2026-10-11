@@ -1,14 +1,20 @@
 import { isPresent } from "./attendance";
 import { invoicePaid, invoiceRemaining } from "./billing";
 import { weightedAverage } from "./grades";
-import type { AttendanceRecord, Grade, Invoice, SchoolClass, Student } from "./types";
+import type { AttendanceRecord, Grade, Invoice, Lesson, SchoolClass, Student } from "./types";
 
 export interface ClassAttendanceRow { classId: string; className: string; marked: number; present: number; rate: number | null }
 
-export function attendanceByClass(classes: SchoolClass[], students: Student[], records: AttendanceRecord[]): ClassAttendanceRow[] {
+/**
+ * Sinf/guruh bo'yicha davomat. lessons berilsa yozuv dars qaysi guruhniki bo'lsa o'shanga
+ * hisoblanadi (o'quv markazi: bir o'quvchi bir nechta guruhda); aks holda asosiy sinf bo'yicha.
+ */
+export function attendanceByClass(classes: SchoolClass[], students: Student[], records: AttendanceRecord[], lessons?: Lesson[]): ClassAttendanceRow[] {
   const classOf = new Map(students.map((s) => [s.id, s.classId]));
+  const lessonClass = new Map((lessons ?? []).map((l) => [l.id, l.classId]));
+  const of = (r: AttendanceRecord) => lessonClass.get(r.lessonId) ?? classOf.get(r.studentId);
   return classes.map((c) => {
-    const rs = records.filter((r) => classOf.get(r.studentId) === c.id);
+    const rs = records.filter((r) => of(r) === c.id);
     const present = rs.filter((r) => isPresent(r.status)).length;
     return { classId: c.id, className: c.name, marked: rs.length, present, rate: rs.length ? present / rs.length : null };
   });

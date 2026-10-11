@@ -170,3 +170,10 @@ dialog::backdrop {
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
 }
+
+/* Kirish kartasini chop etish: sahifadan faqat karta qog'ozga chiqadi */
+@media print {
+  body * { visibility: hidden !important; }
+  #credential-card, #credential-card * { visibility: visible !important; }
+  #credential-card { position: fixed; top: 0; left: 0; width: 100%; color: #000; border-color: #999; }
+}

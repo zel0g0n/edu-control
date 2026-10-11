@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarCheck, ChevronLeft, MessagesSquare, ScanFace, Star, Wallet } from "lucide-react";
-import { DEMO_ACCOUNTS } from "@edunazorat/shared";
+import { CalendarCheck, ChevronLeft, Eye, EyeOff, MessagesSquare, ScanFace, Star, Wallet } from "lucide-react";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@edunazorat/shared";
 
+import { MfaLoginStep } from "@/components/mfa";
 import { errorText, Logo } from "@/components/providers";
 import { homeFor } from "@/components/shell";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -19,6 +20,12 @@ export default function LoginPage() {
   const router = useRouter();
   const [digits, setDigits] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
+  // Asosiy usul: login + parol. SMS kod faqat server SMS'ni qo'llasa ko'rinadi.
+  const [method, setMethod] = useState<"password" | "sms">("password");
+  const [smsAvailable, setSmsAvailable] = useState(false);
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [code, setCode] = useState("");
   const [devCode, setDevCode] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +43,26 @@ export default function LoginPage() {
   useEffect(() => () => {
     if (timer.current) clearInterval(timer.current);
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    app.authMethods().then((m) => { if (alive) setSmsAvailable(m.sms); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [app]);
+
+  const signInPassword = async (e?: React.FormEvent, l = login, p = password) => {
+    e?.preventDefault();
+    if (!l.trim() || !p) return setError(t("Login va parolni kiriting"));
+    setBusy(true);
+    try {
+      const user = await app.signInPassword(l, p);
+      if (user) router.replace(homeFor(user.role));
+      else setBusy(false);
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    }
+  };
 
   const startTimer = () => {
     if (timer.current) clearInterval(timer.current);
@@ -70,7 +97,8 @@ export default function LoginPage() {
     setBusy(true);
     try {
       const user = await app.signIn(number, value);
-      router.replace(homeFor(user.role));
+      if (user) router.replace(homeFor(user.role));
+      else setBusy(false);
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -78,6 +106,13 @@ export default function LoginPage() {
   };
 
   const quick = async (p: string) => {
+    // Demo: login + umumiy demo parol (SMS shart emas)
+    const acc = DEMO_ACCOUNTS.find((a) => a.phone === p);
+    if (acc && method === "password") {
+      setLogin(acc.login);
+      setPassword(DEMO_PASSWORD);
+      return signInPassword(undefined, acc.login, DEMO_PASSWORD);
+    }
     setDigits(p.slice(3));
     setBusy(true);
     try {
@@ -91,7 +126,8 @@ export default function LoginPage() {
         return;
       }
       const user = await app.signIn(p, r.devCode);
-      router.replace(homeFor(user.role));
+      if (user) router.replace(homeFor(user.role));
+      else setBusy(false);
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -148,7 +184,41 @@ export default function LoginPage() {
         </div>
 
         <div className="mx-auto mt-10 w-full max-w-sm md:mt-0">
-          {step === "phone" ? (
+          {app.mfaChallenge ? (
+            <MfaLoginStep onDone={() => { if (app.currentUser) router.replace(homeFor(app.currentUser.role)); }}
+              onBack={() => { app.cancelMfa(); setPassword(""); setError(null); }} />
+          ) : <>
+          {smsAvailable && step === "phone" && (
+            <div className="mb-6 flex">
+              <Segmented value={method} onChange={(m) => { setMethod(m); setError(null); }}
+                options={[{ value: "password", label: t("Login va parol") }, { value: "sms", label: t("SMS kod") }]} />
+            </div>
+          )}
+          {method === "password" ? (
+            <form onSubmit={signInPassword} noValidate>
+              <h2 className="text-2xl font-bold tracking-tight">{t("Kirish")}</h2>
+              <p className="mt-1.5 text-[15px] text-muted">{t("Login va parolni o'quv markazi administratori beradi")}</p>
+              <label className="mt-6 block text-[13px] font-semibold text-muted" htmlFor="login">{t("Login")}</label>
+              <input id="login" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus
+                placeholder={t("ism.familiya yoki 90 123 45 67")} value={login}
+                onChange={(e) => { setLogin(e.target.value); setError(null); }}
+                className={cx(inputCls, "mt-1.5 h-12 text-[16px]")} />
+              <label className="mt-4 block text-[13px] font-semibold text-muted" htmlFor="password">{t("Parol")}</label>
+              <div className="relative mt-1.5">
+                <input id="password" type={showPw ? "text" : "password"} autoComplete="current-password" value={password}
+                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                  className={cx(inputCls, "tabular h-12 pr-12 text-[16px]")} />
+                <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? t("Parolni yashirish") : t("Parolni ko'rsatish")}
+                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-muted hover:text-ink">
+                  {showPw ? <EyeOff size={18} aria-hidden /> : <Eye size={18} aria-hidden />}
+                </button>
+              </div>
+              {error && <p role="alert" className="mt-2 text-sm font-medium text-bad">{error}</p>}
+              <button type="submit" disabled={busy} className={cx(btn.primary, "mt-5 h-12 w-full text-[15px]")}>{t("Kirish")}</button>
+              <p className="mt-3 text-center text-xs text-muted">{t("Parolni unutdingizmi? O'quv markazi administratoriga murojaat qiling.")}</p>
+              {showDemo && <DemoAccounts busy={busy} onPick={quick} hint={t("Demo hisoblar (parol {p})", { p: DEMO_PASSWORD })} />}
+            </form>
+          ) : step === "phone" ? (
             <form onSubmit={requestCode} noValidate>
               <h2 className="text-2xl font-bold tracking-tight">{t("Kirish")}</h2>
               <p className="mt-1.5 text-[15px] text-muted">{t("Muassasa ro'yxatga olgan telefon raqamingizni kiriting")}</p>
@@ -166,20 +236,7 @@ export default function LoginPage() {
               {error && <p role="alert" className="mt-2 text-sm font-medium text-bad">{error}</p>}
               <button type="submit" disabled={busy} className={cx(btn.primary, "mt-5 h-12 w-full text-[15px]")}>{t("Kod olish")}</button>
 
-              {showDemo && <div className="mt-10">
-                <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-muted">
-                  <span className="h-px flex-1 bg-line" />{app.mode === "local" ? t("Demo hisoblar (kod 1111)") : t("Demo hisoblar")}<span className="h-px flex-1 bg-line" />
-                </div>
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                  {DEMO_ACCOUNTS.map((a) => (
-                    <button key={a.phone} type="button" disabled={busy} onClick={() => quick(a.phone)}
-                      className="flex flex-col items-start rounded-xl border border-line bg-surface px-3 py-2 text-left transition hover:border-primary/60 disabled:opacity-50">
-                      <span className="text-[13px] font-semibold">{t(a.label)}</span>
-                      <span className="tabular text-xs text-muted">{fmt.phone(a.phone)}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>}
+              {showDemo && <DemoAccounts busy={busy} onPick={quick} hint={app.mode === "local" ? t("Demo hisoblar (kod 1111)") : t("Demo hisoblar")} />}
             </form>
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); void verify(); }} noValidate>
@@ -205,8 +262,29 @@ export default function LoginPage() {
               </button>
             </form>
           )}
+          </>}
         </div>
       </main>
+    </div>
+  );
+}
+
+function DemoAccounts({ busy, onPick, hint }: { busy: boolean; onPick: (phone: string) => void; hint: string }) {
+  const t = useT();
+  return (
+    <div className="mt-10">
+      <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-muted">
+        <span className="h-px flex-1 bg-line" />{hint}<span className="h-px flex-1 bg-line" />
+      </div>
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        {DEMO_ACCOUNTS.map((a) => (
+          <button key={a.phone} type="button" disabled={busy} onClick={() => onPick(a.phone)}
+            className="flex flex-col items-start rounded-xl border border-line bg-surface px-3 py-2 text-left transition hover:border-primary/60 disabled:opacity-50">
+            <span className="text-[13px] font-semibold">{t(a.label)}</span>
+            <span className="tabular text-xs text-muted">{/[a-z]/.test(a.login) ? a.login : fmt.phone(a.phone)}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

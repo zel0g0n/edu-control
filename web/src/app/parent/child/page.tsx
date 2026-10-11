@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { MessagesSquare, ScanFace, ShieldCheck, ShieldOff } from "lucide-react";
-import type { Student } from "@edunazorat/shared";
+import { hasOnlinePayments, type Student } from "@edunazorat/shared";
 
 import { ParentFrame } from "@/components/parent-frame";
+import { ReceiptIdCard } from "@/components/receipt-id";
 import { useRun } from "@/components/providers";
 import { Avatar, btn, Card, cx, ListCard, ListRow, Pill, Section, useConfirm } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
@@ -22,9 +23,9 @@ function Profile({ student: s }: { student: Student }) {
   const run = useRun();
   const { ask, dialog } = useConfirm();
   const [busy, setBusy] = useState(false);
-  const cls = app.schoolClass(s.classId);
-  const teachers = app.teachersOfClass(s.classId);
-  const homeroom = cls?.homeroomTeacherId;
+  const classes = app.classesOfStudent(s);
+  const teachers = app.teachersOfStudent(s);
+  const homerooms = new Set(classes.map((c) => c.homeroomTeacherId).filter(Boolean));
 
   const setConsent = async (consent: boolean) => {
     if (!consent && !(await ask(t("Rozilik bekor qilinsa, farzandingizning yuz namunasi o'chiriladi va davomat faqat qo'lda olinadi."), { danger: true, ok: t("Bekor qilish") }))) return;
@@ -40,10 +41,11 @@ function Profile({ student: s }: { student: Student }) {
           <Avatar name={s.name} image={s.facePhoto} size={72} />
           <div className="min-w-0">
             <div className="text-xl font-bold">{s.name}</div>
-            <div className="text-sm text-muted">{cls?.name} · {app.institution(s.institutionId)?.name}</div>
+            <div className="text-sm text-muted">{classes.map((c) => c.name).join(", ")} · {app.institution(s.institutionId)?.name}</div>
             {s.birthDay && <div className="text-sm text-muted">{t("Tug'ilgan sana")}: {fmt.dateFull(s.birthDay)}</div>}
           </div>
         </Card>
+        <ReceiptIdCard id={s.receiptId} online={hasOnlinePayments(app.institution(s.institutionId)?.settings.payments)} className="mt-3" />
 
         <Section title={t("Yuz orqali davomat")}>
           <Card className="p-4">
@@ -76,7 +78,7 @@ function Profile({ student: s }: { student: Student }) {
             <ListRow key={teacher.id}
               leading={<Avatar name={teacher.name} />}
               title={teacher.name}
-              subtitle={[subjects.join(", "), teacher.id === homeroom ? t("sinf rahbari") : ""].filter(Boolean).join(" · ")}
+              subtitle={[subjects.join(", "), homerooms.has(teacher.id) ? t("sinf rahbari") : ""].filter(Boolean).join(" · ")}
               trailing={<MessageButton teacherId={teacher.id} studentId={s.id} />}
             />
           ))}

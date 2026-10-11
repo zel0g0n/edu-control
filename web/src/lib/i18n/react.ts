@@ -7,5 +7,7 @@ import { translate, type Params } from "./index";
 export function useT(): (key: string, params?: Params) => string {
   const app = useApp();
   const lang = app.lang;
-  return (key, params) => translate(lang, key, params);
+  // O'quv markazida "sinf" o'rniga "guruh"
+  const vocab = app.vocab;
+  return (key, params) => translate(lang, key, params, vocab);
 }

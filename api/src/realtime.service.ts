@@ -2,6 +2,7 @@ import { Inject, Injectable, OnModuleDestroy } from "@nestjs/common";
 import type { Response } from "express";
 import { isEmptyPatch, scopePatch } from "@edunazorat/shared";
 
+import { SessionService } from "./auth/session.service";
 import { StoreService, type Change } from "./store.service";
 
 /**
@@ -13,7 +14,12 @@ export class RealtimeService implements OnModuleDestroy {
   private clients = new Map<string, Set<Response>>();
   private ping: NodeJS.Timeout;
 
-  constructor(@Inject(StoreService) private readonly store: StoreService) {
+  constructor(@Inject(StoreService) private readonly store: StoreService, @Inject(SessionService) sessions: SessionService) {
+    // Boshqa nusxada sessiya bekor qilinsa: shu nusxadagi ulanish ham uziladi
+    sessions.onRevoked = (m) => {
+      if (m.sid) this.dropSession(m.sid);
+      if (m.user) this.dropUser(m.user, m.except);
+    };
     store.events.on("change", (c: Change) => this.broadcast(c));
     // Proksi/telefon ulanishni uzib qo'ymasligi uchun.
     this.ping = setInterval(() => this.each((res) => res.write(": ping\n\n")), 25_000);
@@ -25,14 +31,32 @@ export class RealtimeService implements OnModuleDestroy {
     this.each((res) => res.end());
   }
 
-  add(userId: string, res: Response) {
+  private bySession = new Map<string, Set<Response>>();
+
+  add(userId: string, res: Response, sid = "") {
     const set = this.clients.get(userId) ?? new Set();
     set.add(res);
     this.clients.set(userId, set);
+    const ss = this.bySession.get(sid) ?? new Set();
+    ss.add(res);
+    this.bySession.set(sid, ss);
     res.on("close", () => {
       set.delete(res);
       if (set.size === 0) this.clients.delete(userId);
+      ss.delete(res);
+      if (ss.size === 0) this.bySession.delete(sid);
     });
+  }
+
+  /** Bekor qilingan sessiyaning ochiq ulanishlari uziladi. */
+  dropSession(sid: string) {
+    for (const res of this.bySession.get(sid) ?? []) res.end();
+  }
+
+  /** Foydalanuvchining barcha ulanishlari (parol tiklanganda). */
+  dropUser(userId: string, exceptSid?: string) {
+    const keep = exceptSid ? this.bySession.get(exceptSid) : undefined;
+    for (const res of this.clients.get(userId) ?? []) if (!keep?.has(res)) res.end();
   }
 
   get connected(): number {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CalendarX2, ChevronLeft, ChevronRight, ClipboardCheck, ListChecks, MessagesSquare, NotebookPen, ScanFace, Users } from "lucide-react";
 import { addDays, atTime, isPresent, isoWeekday } from "@edunazorat/shared";
 
+import { HolidayNote } from "@/components/holiday";
 import { PageBody, PageHeader } from "@/components/shell";
 import { btn, Card, cx, EmptyState, Pill, ProgressBar, Section, StatCard } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
@@ -45,6 +46,7 @@ export default function TeacherToday() {
             </div>
           }
         >
+          <HolidayNote institutionId={me.institutionId} day={isToday ? undefined : day} teacher />
           {lessons.length === 0 ? (
             <Card><EmptyState icon={CalendarX2} title={t("Bu kunda darsingiz yo'q")} /></Card>
           ) : (

@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { invoiceRemaining, onlinePaymentPatch, type Invoice } from "@edunazorat/shared";
+import { invoiceForAccount, invoiceRemaining, onlinePaymentPatch, type Invoice } from "@edunazorat/shared";
 
 import { CONFIG, type Config } from "./config";
 import { SQL, type Sql } from "./db/sql";
@@ -47,8 +47,9 @@ export class PaymentsService {
 
   constructor(@Inject(CONFIG) private readonly config: Config, @Inject(SQL) private readonly sql: Sql, @Inject(StoreService) private readonly store: StoreService) {}
 
-  private invoice(id: string): Invoice | undefined {
-    return this.store.db.invoices.find((i) => i.id === id);
+  /** Hisob-varaq ID'si yoki Kvitansiya ID (ota-ona Click/Payme ilovasida o'zi kiritganda). */
+  private invoice(account: string): Invoice | undefined {
+    return invoiceForAccount(this.store.db, account);
   }
 
   // ------------------------------------------------------------ Click
@@ -65,10 +66,11 @@ export class PaymentsService {
       ? `${r.click_trans_id}${r.service_id}${key}${r.merchant_trans_id}${r.amount}${r.action}${r.sign_time}`
       : `${r.click_trans_id}${r.service_id}${key}${r.merchant_trans_id}${r.merchant_prepare_id ?? ""}${r.amount}${r.action}${r.sign_time}`;
     if (!r.sign_string || !safeEq(md5(signSrc), String(r.sign_string).toLowerCase())) return fail(-1, "SIGN CHECK FAILED!");
-    const inv = this.invoice(r.merchant_trans_id);
-    if (!inv) return fail(-5, "Invoice not found");
     const amount = Math.round(Number(r.amount));
-    const [tx] = await this.sql.query<{ state: string; amount: string }>("SELECT state, amount FROM click_transactions WHERE click_trans_id = $1", [r.click_trans_id]);
+    const [tx] = await this.sql.query<{ state: string; amount: string; invoice_id: string }>("SELECT state, amount, invoice_id FROM click_transactions WHERE click_trans_id = $1", [r.click_trans_id]);
+    // Tasdiqlashda tayyorlangan hisob-varaq olinadi (Kvitansiya ID bilan to'langanda oradagi o'zgarish chalg'itmasin)
+    const inv = stage === "complete" && tx ? this.store.db.invoices.find((i) => i.id === tx.invoice_id) : this.invoice(r.merchant_trans_id);
+    if (!inv) return fail(-5, "Invoice not found");
 
     if (stage === "prepare") {
       if (tx?.state === "done") return fail(-4, "Already paid");
@@ -119,7 +121,7 @@ export class PaymentsService {
   private accountInvoice(params: Record<string, unknown>): Invoice {
     const field = this.store.db.institutions[0]?.settings.payments.paymeAccountField || "order_id";
     const acc = (params.account ?? {}) as Record<string, unknown>;
-    const inv = this.invoice(String(acc[field] ?? acc.order_id ?? ""));
+    const inv = this.invoice(String(acc[field] ?? acc.order_id ?? acc.receipt_id ?? ""));
     if (!inv) throw new PaymeError(-31050, msg("Hisob-varaq topilmadi", "Счёт не найден", "Invoice not found"), field);
     return inv;
   }

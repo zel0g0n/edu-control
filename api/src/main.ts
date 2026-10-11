@@ -1,7 +1,7 @@
 import { Logger } from "@nestjs/common";
 
 import { createApp } from "./bootstrap";
-import { loadConfig } from "./config";
+import { loadConfig, productionProblems } from "./config";
 import { connect } from "./db/sql";
 
 async function main() {
@@ -11,7 +11,11 @@ async function main() {
   await app.listen(config.port, "0.0.0.0");
   const log = new Logger("EduNazorat");
   log.log(`API: http://localhost:${config.port}  (baza: ${config.databaseUrl.replace(/\/\/[^@]*@/, "//***@")})`);
-  if (config.smsDevMode) log.warn("SMS_DEV_MODE: SMS yuborilmaydi, kod javobda qaytadi. Ishlab chiqarishda o'chiring!");
+  log.log(`Ruxsat berilgan sayt manzillari (WEB_ORIGIN): ${config.webOrigin.join(", ")}`);
+  if (config.appEnv === "pilot") {
+    for (const p of productionProblems(config)) log.warn(`Sinov rejimi: ${p}`);
+    log.warn("Haqiqiy o'quvchilar ma'lumoti uchun APP_ENV=production qo'ying (SECURITY.md)");
+  }
 }
 
 main().catch((e) => {

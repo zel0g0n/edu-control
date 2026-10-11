@@ -8,6 +8,7 @@ import { PhoneInput } from "@/components/director/forms";
 import { useRun } from "@/components/providers";
 import { PageBody, PageHeader } from "@/components/shell";
 import { btn, Card, DataTable, EmptyState, Field, inputCls, Modal, Pill, Select, StatCard, useConfirm } from "@/components/ui";
+import { IssuePasswordButton, useCredentialStatus } from "@/components/credentials";
 import { useApp } from "@/lib/data/store";
 import { fmt } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
@@ -21,6 +22,8 @@ export default function AdminPage() {
   const list = [...app.db.institutions].sort((a, b) => b.createdAt - a.createdAt);
   const studentsOf = (id: string) => app.db.students.filter((s) => s.institutionId === id && !s.archived).length;
   const directorOf = (id: string) => app.db.users.find((u) => u.role === "director" && u.institutionId === id);
+  const directors = list.map((i) => directorOf(i.id)).filter((u): u is NonNullable<typeof u> => !!u);
+  const creds = useCredentialStatus(directors.map((u) => u.id));
 
   const toggle = async (i: Institution) => {
     if (i.active && !(await ask(t("«{name}» bloklansa, uning barcha foydalanuvchilari tizimga kira olmaydi.", { name: i.name }), { danger: true, ok: t("Bloklash") }))) return;
@@ -42,12 +45,13 @@ export default function AdminPage() {
             empty={<Card><EmptyState icon={Building2} title={t("Muassasa yo'q")} /></Card>}
             columns={[
               { key: "name", header: t("Nomi"), sort: (i) => i.name, cell: (i) => <span className="min-w-0"><span className="block truncate font-medium">{i.name}</span><span className="block text-xs text-muted">{t(`inst.${i.type}`)} · {i.city}</span></span> },
-              { key: "dir", header: t("Direktor"), cell: (i) => { const d = directorOf(i.id); return d ? <span><span className="block">{d.name}</span><span className="tabular block text-xs text-muted">{fmt.phone(d.phone)}</span></span> : <Pill tone="warn">{t("yo'q")}</Pill>; } },
+              { key: "dir", header: t("Direktor"), cell: (i) => { const d = directorOf(i.id); return d ? <span><span className="block">{d.name}</span><span className="tabular block text-xs text-muted">{fmt.phone(d.phone)} · {creds.status[d.id]?.hasPassword ? t("parol bor") : t("parol berilmagan")}</span></span> : <Pill tone="warn">{t("yo'q")}</Pill>; } },
               { key: "students", header: t("O'quvchilar"), align: "right", sort: (i) => studentsOf(i.id), cell: (i) => studentsOf(i.id) },
               { key: "since", header: t("Qo'shilgan"), sort: (i) => i.createdAt, cell: (i) => fmt.dateFull(i.createdAt) },
               { key: "status", header: t("Holat"), cell: (i) => <Pill tone={i.active ? "ok" : "bad"}>{i.active ? t("Faol") : t("Bloklangan")}</Pill> },
               { key: "act", header: "", align: "right", cell: (i) => (
                 <span className="flex justify-end gap-1">
+                  {directorOf(i.id) && <IssuePasswordButton user={directorOf(i.id)!} hasPassword={creds.status[directorOf(i.id)!.id]?.hasPassword} onIssued={creds.refresh} />}
                   <button type="button" className={btn.icon} aria-label={t("Tahrirlash")} onClick={() => setForm(i)}><Pencil size={17} /></button>
                   <button type="button" className={btn.icon} aria-label={i.active ? t("Bloklash") : t("Faollashtirish")} onClick={() => toggle(i)}>
                     {i.active ? <Lock size={17} className="text-bad" /> : <LockOpen size={17} className="text-ok" />}

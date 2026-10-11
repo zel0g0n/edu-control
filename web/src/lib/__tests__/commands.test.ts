@@ -24,6 +24,8 @@ async function as(phone: string) {
   return s;
 }
 const TEACHER = "998903333333", PARENT = "998905555555", DIRECTOR = "998901111111", STUDENT = "998904444444", ADMIN = "998900000000";
+/** Maktab administratori: muassasani boshqaradi (direktor faqat ko'radi). */
+const SCHOOL_ADMIN = "998907777777";
 
 async function expectErr(p: Promise<unknown>, key: string) {
   await expect(p).rejects.toSatisfy((e: unknown) => e instanceof CommandError && e.key === key);
@@ -54,12 +56,12 @@ describe("davomat dars bo'yicha", () => {
     const before = (await as(PARENT)).notificationsOf("u_parent").length;
     // O'qituvchi boshqa foydalanuvchilarning bildirishnomalarini ko'rmaydi
     expect(t.notificationsOf("u_parent")).toHaveLength(0);
-    await t.run("attendance.mark", { lessonId, day: t.today, marks: [{ studentId: "s_b0", status: "late", source: "face", snapshot: "data:x" }] });
+    await t.run("attendance.mark", { lessonId, day: t.today, marks: [{ studentId: "s_b0", status: "late", source: "face", snapshot: "data:image/jpeg;base64,AAAA" }] });
     expect(t.attendanceRecord("s_b0", lessonId, t.today)?.status).toBe("late");
     const p = await as(PARENT);
     const n = p.notificationsOf("u_parent");
     expect(n.length).toBe(before + 1);
-    expect(n[0]).toMatchObject({ key: "notif.attendance.late.face", image: "data:x" });
+    expect(n[0]).toMatchObject({ key: "notif.attendance.late.face", image: "data:image/jpeg;base64,AAAA" });
     // Qayta belgilash: yozuv yangilanadi, takror xabar yo'q
     await t.run("attendance.mark", { lessonId, day: t.today, marks: [{ studentId: "s_b0", status: "late", source: "manual" }] });
     expect(t.attendanceOfLesson(lessonId, t.today)).toHaveLength(1);
@@ -98,7 +100,7 @@ describe("baholar", () => {
 describe("vazifa va topshiriq", () => {
   it("o'quvchi topshiradi, o'qituvchi baholaydi", async () => {
     const t = await as(TEACHER);
-    const p = await t.run("homework.save", { classId: "c_7b", subject: "Matematika", title: "Test", description: "", dueDay: t.today, attachments: [{ id: "f", name: "a.pdf", type: "application/pdf", size: 10, url: "data:," }] });
+    const p = await t.run("homework.save", { classId: "c_7b", subject: "Matematika", title: "Test", description: "", dueDay: t.today, attachments: [{ id: "f", name: "a.pdf", type: "application/pdf", size: 10, url: "data:application/pdf;base64,AAAA" }] });
     const hwId = p.upsert!.homeworks![0].id;
     const st = await as(STUDENT);
     expect(st.notificationsOf("u_student").some((n) => n.key === "notif.homework")).toBe(true);
@@ -119,15 +121,15 @@ describe("vazifa va topshiriq", () => {
   it("katta fayl rad etiladi", async () => {
     const t = await as(TEACHER);
     await expectErr(
-      t.run("homework.save", { classId: "c_7b", subject: "Matematika", title: "X", description: "", dueDay: t.today, attachments: [{ id: "f", name: "big", type: "x", size: 5e6, url: "" }] }),
+      t.run("homework.save", { classId: "c_7b", subject: "Matematika", title: "X", description: "", dueDay: t.today, attachments: [{ id: "f", name: "big", type: "x", size: 5e6, url: "data:text/plain;base64,AAAA" }] }),
       "err.fileTooLarge",
     );
   });
 });
 
-describe("direktor boshqaruvi", () => {
+describe("administrator boshqaruvi", () => {
   it("o'quvchi qo'shish, ota-onani telefon bo'yicha biriktirish", async () => {
-    const d = await as(DIRECTOR);
+    const d = await as(SCHOOL_ADMIN);
     const p = await d.run("student.save", {
       name: "Yangi O'quvchi", classId: "c_5a", parents: [{ name: "Feruza Karimova", phone: "90 555 55 55" }, { name: "Ota", phone: "+998 93 000 00 01" }], studentPhone: "93 000 00 02",
     });
@@ -135,7 +137,11 @@ describe("direktor boshqaruvi", () => {
     expect(d.userById("u_parent")!.childIds).toContain(s.id);
     const newParent = d.db.users.find((u) => u.phone === "998930000001")!;
     expect(newParent).toMatchObject({ role: "parent", childIds: [s.id] });
-    expect(d.db.users.find((u) => u.phone === "998930000002")).toMatchObject({ role: "student", studentId: s.id });
+    expect(d.db.users.find((u) => u.phone === "998930000002")).toMatchObject({ role: "student", studentId: s.id, login: "yangi.oquvchi" });
+    // Telefonsiz o'quvchi ham akkaunt oladi (login ism.familiya, band bo'lsa raqam qo'shiladi)
+    const p2 = await d.run("student.save", { name: "Yangi O'quvchi", classId: "c_5a", parents: [] });
+    const acc2 = p2.upsert!.users!.find((u) => u.role === "student")!;
+    expect(acc2).toMatchObject({ login: "yangi.oquvchi2", phone: "", studentId: p2.upsert!.students![0].id });
     // Ota-onani olib tashlash
     await d.run("student.save", { id: s.id, name: s.name, classId: "c_5a", parents: [{ name: "Ota", phone: "998930000001" }] });
     expect(d.userById("u_parent")!.childIds).not.toContain(s.id);
@@ -143,7 +149,7 @@ describe("direktor boshqaruvi", () => {
   });
 
   it("o'qituvchi, sinf va jadval to'qnashuvi", async () => {
-    const d = await as(DIRECTOR);
+    const d = await as(SCHOOL_ADMIN);
     const tp = await d.run("teacher.save", { name: "Yangi Ustoz", phone: "97 111 22 33", subjects: ["Kimyo", " Biologiya "] });
     const tid = tp.upsert!.users![0].id;
     expect(d.userById(tid)!.subjects).toEqual(["Kimyo", "Biologiya"]);
@@ -161,7 +167,7 @@ describe("direktor boshqaruvi", () => {
   });
 
   it("oylik hisob-varaqlar va to'lov", async () => {
-    const d = await as(DIRECTOR);
+    const d = await as(SCHOOL_ADMIN);
     const next = "2026-11";
     const p = await d.run("invoice.generate", { month: next });
     expect(p.upsert!.invoices!.length).toBe(d.studentsOfInstitution("inst_school").length);
@@ -174,9 +180,31 @@ describe("direktor boshqaruvi", () => {
   });
 
   it("boshqa muassasaga ruxsat yo'q", async () => {
-    const d = await as("998902222222");
+    const d = await as("998908888888");
     await expectErr(d.run("student.save", { name: "X", classId: "c_5a", parents: [] }), "err.notFound");
     await expectErr(d.run("institution.setActive", { id: "inst_school", active: false }), "err.forbidden");
+  });
+
+  it("direktor faqat ko'radi, administratorni qo'shadi", async () => {
+    const dir = await as(DIRECTOR);
+    // Direktor hamma ma'lumotni ko'radi
+    expect(dir.studentsOfInstitution("inst_school").length).toBeGreaterThan(0);
+    // ...lekin o'zgartira olmaydi
+    await expectErr(dir.run("student.save", { name: "X", classId: "c_5a", parents: [] }), "err.forbidden");
+    await expectErr(dir.run("invoice.generate", { month: "2026-11" }), "err.forbidden");
+    await expectErr(dir.run("settings.save", { settings: dir.myInstitution!.settings }), "err.forbidden");
+    // Administrator qo'shadi va o'chiradi
+    const a = await dir.run("admin.save", { name: "Yangi Admin", phone: "97 555 44 33" });
+    const admin = a.upsert!.users![0];
+    expect(admin).toMatchObject({ role: "admin", institutionId: "inst_school" });
+    await dir.run("admin.setActive", { id: admin.id, active: false });
+    await expectErr(dir.run("admin.save", { name: "Y", phone: "90 333 33 33" }), "err.phoneTaken");
+    // Administrator boshqa administrator qo'sha olmaydi
+    const adm = await as(SCHOOL_ADMIN);
+    await expectErr(adm.run("admin.save", { name: "Z", phone: "97 555 44 34" }), "err.forbidden");
+    // Boshqa muassasa direktori bu administratorni o'zgartira olmaydi
+    const dir2 = await as("998902222222");
+    await expectErr(dir2.run("admin.setActive", { id: "u_adm", active: false }), "err.forbidden");
   });
 });
 
@@ -197,7 +225,7 @@ describe("ota-ona", () => {
 
   it("rozilik bekor qilinsa namuna o'chadi", async () => {
     const t = await as(TEACHER);
-    await t.run("face.enroll", { studentId: "s_b0", templates: [new Array(192).fill(0.1)], photo: "p" });
+    await t.run("face.enroll", { studentId: "s_b0", templates: [new Array(192).fill(0.1)], photo: "data:image/jpeg;base64,AAAA" });
     const p = await as(PARENT);
     await p.run("consent.set", { studentId: "s_b0", consent: false });
     expect(p.student("s_b0")).toMatchObject({ parentConsent: false, faceTemplates: [], facePhoto: undefined });

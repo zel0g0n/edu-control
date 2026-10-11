@@ -54,11 +54,13 @@ Kalitni tekshirish.
 {
   "institution": { "id": "inst_school", "name": "Kelajak xususiy maktabi" },
   "classes": [{ "id": "c_5a", "name": "5-A" }],
-  "students": [{ "id": "s_a1", "name": "Aziz Karimov", "classId": "c_5a", "faceConsent": true }]
+  "students": [{ "id": "s_a1", "name": "Aziz Karimov", "classId": "c_5a", "classIds": ["c_5a"], "faceConsent": true }]
 }
 ```
 
-Telefon raqamlari va boshqa shaxsiy ma'lumotlar berilmaydi.
+Telefon raqamlari va boshqa shaxsiy ma'lumotlar berilmaydi. `classId`: asosiy sinf/guruh;
+`classIds`: barcha guruhlari (o'quv markazida bir o'quvchi bir nechta guruhda bo'lishi mumkin).
+Davomat yuborilganda o'quvchi shu darsning guruhida bo'lishi kifoya.
 
 ### GET /schedule?day=YYYY-MM-DD
 

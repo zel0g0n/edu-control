@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Pencil, Plus, UserCheck, UserX, Users } from "lucide-react";
 import { isoWeekday, type AppUser } from "@edunazorat/shared";
 
+import { IssuePasswordButton, useCredentialStatus } from "@/components/credentials";
 import { TeacherForm } from "@/components/director/forms";
 import { useRun } from "@/components/providers";
 import { PageBody, PageHeader } from "@/components/shell";
@@ -22,6 +23,7 @@ export default function DirectorTeachers() {
   const [form, setForm] = useState<AppUser | "new" | null>(null);
   const all = app.teachersOfInstitution(inst.id, true);
   const rows = all.filter((u) => (show === "active") === u.active).filter((u) => !q || `${u.name} ${u.subjects.join(" ")}`.toLowerCase().includes(q.toLowerCase()));
+  const creds = useCredentialStatus(app.canManage ? rows.map((u) => u.id) : []);
   const today = isoWeekday(app.today);
   const weekly = (id: string) => app.db.lessons.filter((l) => l.teacherId === id).length;
   // Bugun shu o'qituvchining darslaridan nechtasida davomat olingan.
@@ -33,7 +35,7 @@ export default function DirectorTeachers() {
   return (
     <>
       <PageHeader title={t("O'qituvchilar")} subtitle={t("{n} nafar", { n: all.filter((u) => u.active).length })}
-        actions={<button type="button" className={btn.smPrimary} onClick={() => setForm("new")}><Plus size={16} aria-hidden /> {t("O'qituvchi qo'shish")}</button>} />
+        actions={app.canManage && <button type="button" className={btn.smPrimary} onClick={() => setForm("new")}><Plus size={16} aria-hidden /> {t("O'qituvchi qo'shish")}</button>} />
       <PageBody>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <SearchInput value={q} onChange={setQ} placeholder={t("Ism yoki fan")} className="min-w-60 flex-1" />
@@ -52,15 +54,16 @@ export default function DirectorTeachers() {
               const x = todayInfo(u.id);
               return x.total === 0 ? <span className="text-muted">—</span> : <Pill tone={x.done === x.total ? "ok" : "warn"}>{x.done}/{x.total}</Pill>;
             } },
-            { key: "act", header: "", align: "right", cell: (u) => (
+            ...(!app.canManage ? [] : [{ key: "act", header: "", align: "right" as const, cell: (u: AppUser) => (
               <span className="flex justify-end gap-1">
+                <IssuePasswordButton user={u} hasPassword={creds.status[u.id]?.hasPassword} onIssued={creds.refresh} />
                 <button type="button" className={btn.icon} aria-label={t("Tahrirlash")} onClick={() => setForm(u)}><Pencil size={17} /></button>
                 <button type="button" className={btn.icon} aria-label={u.active ? t("Faolsizlantirish") : t("Faollashtirish")}
                   onClick={() => run(() => app.run("teacher.setActive", { id: u.id, active: !u.active }), u.active ? t("O'qituvchi faolsizlantirildi") : t("O'qituvchi faollashtirildi"))}>
                   {u.active ? <UserX size={17} className="text-bad" /> : <UserCheck size={17} className="text-ok" />}
                 </button>
               </span>
-            ) },
+            ) }]),
           ]} />
       </PageBody>
       {form && <TeacherForm teacher={form === "new" ? undefined : form} onClose={() => setForm(null)} />}

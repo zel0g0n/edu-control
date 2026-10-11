@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, UserX } from "lucide-react";
+import { inClass } from "@edunazorat/shared";
 
 import { CameraStage, faceSnapshot, type CameraStageHandle } from "@/components/camera-stage";
 import { useRun, useToast } from "@/components/providers";
@@ -30,6 +31,9 @@ export function EnrollClient() {
   const toast = useToast();
   const studentId = useRouteParam("studentId");
   const s = app.student(studentId);
+  // Qaysi guruhdan kelgan bo'lsa o'shanga qaytadi (o'quv markazida o'quvchi bir nechta guruhda)
+  const from = useSearchParams().get("from");
+  const backClass = from && s && inClass(s, from) ? from : s?.classId;
   const stage = useRef<CameraStageHandle>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorText, setErrorText] = useState("");
@@ -51,7 +55,7 @@ export function EnrollClient() {
     const ok = await run(() => app.run("face.enroll", { studentId: s.id, templates, photo: photo.current, model: FACE.modelId }));
     if (!ok) return;
     toast(t("{name}: yuz namunasi saqlandi", { name: s.name }), "ok");
-    router.replace(`/teacher/classes/${s.classId}?tab=students`);
+    router.replace(`/teacher/classes/${backClass}?tab=students`);
   };
 
   useEffect(() => {
@@ -164,7 +168,7 @@ export function EnrollClient() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
       <header className="flex items-center gap-3 px-3 pt-3 pb-2">
-        <Link href={`/teacher/classes/${s.classId}?tab=students`} className="flex size-11 items-center justify-center rounded-full hover:bg-white/10" aria-label={t("Orqaga")}>
+        <Link href={`/teacher/classes/${backClass}?tab=students`} className="flex size-11 items-center justify-center rounded-full hover:bg-white/10" aria-label={t("Orqaga")}>
           <ChevronLeft size={26} />
         </Link>
         <div className="flex-1 truncate text-lg font-bold">{s.name}</div>

@@ -1,4 +1,5 @@
 import { monthKey } from "./dates";
+import { classIdsOf } from "./membership";
 import type { Invoice, PaymentProviderSettings, SchoolClass, Student } from "./types";
 
 export function invoicePaid(inv: Invoice): number {
@@ -26,9 +27,11 @@ export function invoicesToCreate(
   const [y, m] = month.split("-").map(Number);
   const lastDay = new Date(y, m, 0).getDate();
   const due = `${month}-${String(Math.min(dueDayOfMonth, lastDay)).padStart(2, "0")}`;
+  // O'quv markazi: bir nechta guruhdagi o'quvchiga barcha guruhlar narxi yig'indisi
+  const total = (s: Student) => classIdsOf(s).reduce((sum, c) => sum + (fee.get(c) ?? 0), 0);
   return students
-    .filter((s) => !s.archived && !has.has(s.id) && (fee.get(s.classId) ?? 0) > 0)
-    .map((s) => ({ studentId: s.id, month, amount: fee.get(s.classId)!, dueDay: due, payments: [] }));
+    .filter((s) => !s.archived && !has.has(s.id) && total(s) > 0)
+    .map((s) => ({ studentId: s.id, month, amount: total(s), dueDay: due, payments: [] }));
 }
 
 export function currentMonth(now: number): string {
@@ -59,4 +62,19 @@ export function paymePaymentUrl(cfg: PaymentProviderSettings, invoiceId: string,
   if (returnUrl) params += `;c=${returnUrl}`;
   const b64 = typeof btoa === "function" ? btoa(params) : Buffer.from(params).toString("base64");
   return `https://checkout.paycom.uz/${b64}`;
+}
+
+/** Markazda Click yoki Payme ulanganmi (to'lov havolasi yaratib bo'ladimi). */
+export function hasOnlinePayments(cfg?: PaymentProviderSettings): boolean {
+  return !!cfg && !!(cfg.paymeMerchantId || (cfg.clickServiceId && cfg.clickMerchantId));
+}
+
+/**
+ * Hisob-varaq uchun to'lov havolalari (Payme/Click o'z sahifasi). Administrator ota-onaga
+ * yuboradi yoki QR qilib chop etadi; to'langach tizim hisob-varaqni o'zi yopadi.
+ */
+export function invoicePaymentLinks(cfg: PaymentProviderSettings | undefined, inv: Invoice): { payme: string | null; click: string | null } {
+  const amount = invoiceRemaining(inv);
+  if (!cfg || amount <= 0) return { payme: null, click: null };
+  return { payme: paymePaymentUrl(cfg, inv.id, amount), click: clickPaymentUrl(cfg, inv.id, amount) };
 }

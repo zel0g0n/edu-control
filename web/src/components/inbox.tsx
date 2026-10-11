@@ -122,18 +122,19 @@ export function ThreadsView() {
       </div>
       {threads.length === 0 ? (
         <Card className="mt-3"><EmptyState icon={MessagesSquare} title={t("Yozishmalar yo'q")}
-          text={u.role === "parent" ? t("Farzandingiz o'qituvchisiga savol yozing") : t("Ota-onalar yozgan xabarlar shu yerda chiqadi")} /></Card>
+          text={u.role === "parent" ? t("Farzandingiz o'qituvchisiga savol yozing") : u.role === "student" ? t("O'qituvchingizga savol yozing") : t("Ota-onalar yozgan xabarlar shu yerda chiqadi")} /></Card>
       ) : (
         <ListCard className="mt-3">
           {threads.map((th) => {
-            const other = app.userById(u.role === "parent" ? th.teacherId : th.parentId);
+            const learner = u.role !== "teacher";
+            const other = app.userById(learner ? th.teacherId : th.parentId);
             const last = app.messagesOf(th.id).at(-1);
             const unread = app.unreadInThread(th.id, u.id);
             const student = app.student(th.studentId);
             return (
               <ListRow key={th.id} href={`${base}/${th.id}`}
                 leading={<Avatar name={other?.name ?? "?"} />}
-                title={<span className="flex items-center gap-2"><span className="truncate">{other?.name}</span>{u.role === "parent" && other && <span className="shrink-0 text-xs font-normal text-muted">{other.subjects.join(", ")}</span>}</span>}
+                title={<span className="flex items-center gap-2"><span className="truncate">{other?.name}</span>{learner && other && <span className="shrink-0 text-xs font-normal text-muted">{other.subjects.join(", ")}</span>}</span>}
                 subtitle={<span className={cx(unread > 0 && "font-semibold text-ink")}>{student?.name}: {last?.text}</span>}
                 trailing={
                   <span className="flex shrink-0 flex-col items-end gap-1">
@@ -158,16 +159,19 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
   const run = useRun();
   const router = useRouter();
   const u = app.currentUser!;
-  const isParent = u.role === "parent";
-  const children = isParent ? u.childIds.map((id) => app.student(id)).filter((s) => !!s) : [];
+  // O'qituvchi bo'lmagan tomon: ota-ona yoki katta yoshli o'quvchining o'zi
+  const isParent = u.role === "parent" || u.role === "student";
+  const children = u.role === "parent" ? u.childIds.map((id) => app.student(id)).filter((s) => !!s) : u.studentId && app.student(u.studentId) ? [app.student(u.studentId)] : [];
   const [studentId, setStudentId] = useState(isParent ? (app.child?.id ?? children[0]?.id ?? "") : "");
   const [teacherId, setTeacherId] = useState("");
   const [parentId, setParentId] = useState("");
   const [text, setText] = useState("");
   const student = app.student(studentId);
-  const teachers = student ? app.teachersOfClass(student.classId) : [];
-  const myStudents = !isParent ? app.classesOfTeacher(u.id).flatMap((c) => app.studentsOfClass(c.id)) : [];
-  const parents = student ? app.parentsOfStudent(student.id) : [];
+  const teachers = student ? app.teachersOfStudent(student) : [];
+  const myStudents = !isParent ? [...new Map(app.classesOfTeacher(u.id).flatMap((c) => app.studentsOfClass(c.id)).map((s) => [s.id, s])).values()] : [];
+  // Katta yoshli o'quvchiga uning o'zi yoziladi
+  const self = student?.adult && student.userId ? app.userById(student.userId) : undefined;
+  const parents = student ? [...app.parentsOfStudent(student.id), ...(self ? [self] : [])] : [];
 
   const send = async () => {
     const p = await run(() => app.run("message.send", { studentId, teacherId: isParent ? teacherId : u.id, parentId: isParent ? undefined : parentId || parents[0]?.id, text }));
@@ -205,17 +209,18 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
             <Field label={t("O'quvchi")}>
               <Select value={studentId} onChange={(v) => { setStudentId(v); setParentId(""); }}>
                 <option value="">{t("Tanlang")}</option>
-                {myStudents.map((s) => <option key={s.id} value={s.id}>{s.name} ({app.schoolClass(s.classId)?.name})</option>)}
+                {myStudents.map((s) => <option key={s.id} value={s.id}>{s.name} ({app.classNamesOf(s)})</option>)}
               </Select>
             </Field>
             {parents.length > 1 && (
               <Field label={t("Ota-ona")}>
                 <Select value={parentId || parents[0].id} onChange={setParentId}>
-                  {parents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {parents.map((p) => <option key={p.id} value={p.id}>{p.id === self?.id ? t("{name} (o'zi)", { name: p.name }) : p.name}</option>)}
                 </Select>
               </Field>
             )}
             {student && parents.length === 0 && <p className="text-sm text-bad">{t("Bu o'quvchiga ota-ona biriktirilmagan")}</p>}
+            {self && parents.length === 1 && <p className="text-sm text-muted">{t("Katta yoshli o'quvchi: xabar uning o'ziga boradi")}</p>}
           </>
         )}
         <Field label={t("Xabar")}>
@@ -300,11 +305,12 @@ export function useThreadTitle({ threadId }: { threadId: string }) {
   const u = app.currentUser;
   const th = app.thread(threadId);
   if (!th || !u) return { title: t("Yozishma"), subtitle: undefined };
-  const other = app.userById(u.role === "parent" ? th.teacherId : th.parentId);
+  const learner = u.role !== "teacher";
+  const other = app.userById(learner ? th.teacherId : th.parentId);
   const s = app.student(th.studentId);
   return {
     title: other?.name ?? t("Yozishma"),
-    subtitle: u.role === "parent" ? `${other?.subjects.join(", ") || t("sinf rahbari")} · ${s?.name}` : `${s?.name}, ${app.schoolClass(s?.classId ?? "")?.name} · ${other?.phone ? fmt.phone(other.phone) : ""}`,
+    subtitle: learner ? `${other?.subjects.join(", ") || t("sinf rahbari")} · ${s?.name}` : `${s?.name}, ${app.schoolClass(s?.classId ?? "")?.name} · ${other?.phone ? fmt.phone(other.phone) : ""}`,
   };
 }
 

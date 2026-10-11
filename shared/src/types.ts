@@ -1,7 +1,12 @@
 // Domen turlari: web ham, API ham aynan shu shakldagi JSON bilan ishlaydi.
 // Sana-vaqt: epoch millisekund. Kun: "YYYY-MM-DD". Oy: "YYYY-MM".
 
-export type UserRole = "superAdmin" | "director" | "teacher" | "parent" | "student";
+/**
+ * superAdmin: platforma egasi (muassasa va direktor qo'shadi).
+ * director: hamma narsani ko'radi, faqat administratorlarni boshqaradi.
+ * admin: muassasani boshqaradi (o'quvchi, o'qituvchi, ota-ona, jadval, to'lov, sozlamalar, parollar).
+ */
+export type UserRole = "superAdmin" | "director" | "admin" | "teacher" | "parent" | "student";
 
 export type InstitutionType = "school" | "center";
 
@@ -30,6 +35,12 @@ export interface InstitutionSettings {
   lateAfterMinutes: number;
   /** Oylik to'lov muddati: oyning shu kuni. */
   paymentDueDay: number;
+  /** Baho tizimi (o'quv markazida o'chirib qo'yish mumkin). Berilmagan = yoqilgan. */
+  gradesEnabled?: boolean;
+  /** Filiallar (bo'sh = bitta manzil). Guruh branchId bilan biriktiriladi. */
+  branches?: Branch[];
+  /** Dam olish kunlari: dars bo'lmaydi, dars soniga kirmaydi. */
+  holidays?: Holiday[];
   payments: PaymentProviderSettings;
   /** NVR integratsiyasi (ixtiyoriy). Kalitning o'zi saqlanmaydi, faqat SHA-256 xeshi. */
   nvr?: NvrSettings;
@@ -75,6 +86,12 @@ export interface AppUser {
   childIds: string[];
   /** O'quvchi akkaunti: qaysi o'quvchi. */
   studentId?: string;
+  /** Kirish logini (o'quvchida ism.familiya; kattalarda yo'q: telefon raqami login). */
+  login?: string;
+  /** O'qituvchiga haq (faqat direktor va administrator ko'radi). */
+  pay?: TeacherPay;
+  /** Administrator: faqat shu filiallar (bo'sh = butun muassasa). */
+  branchIds?: string[];
   active: boolean;
 }
 
@@ -85,16 +102,51 @@ export interface SchoolClass {
   homeroomTeacherId?: string;
   /** Oylik to'lov (so'm). */
   monthlyFee: number;
+  /**
+   * To'lov turi (o'quv markazi). Berilmagan = "monthly".
+   * monthly: oylik narx (oy o'rtasida qo'shilsa/chiqsa dars soniga qarab bo'linadi);
+   * perLesson: har dars narxi × oydagi darslar; course: kurs uchun bir marta.
+   */
+  billingMode?: BillingMode;
+  /** Qaysi filialda (institution.settings.branches). */
+  branchId?: string;
+  /** perLesson: bitta dars narxi. */
+  lessonPrice?: number;
+  /** course: butun kurs narxi (qo'shilgan oyda bir marta). */
+  coursePrice?: number;
+  /** Qoldirilgan dars uchun keyingi oyda chegirma: yo'q / sababli / hammasi. */
+  absenceRefund?: AbsenceRefund;
+}
+
+export type BillingMode = "monthly" | "perLesson" | "course";
+export type AbsenceRefund = "none" | "excused" | "all";
+
+/** O'quvchining guruhga qo'shilishi va chiqishi (o'quv markazi: to'lov va hisobotlar uchun). */
+export interface Enrollment {
+  classId: string;
+  /** Qo'shilgan kun (YYYY-MM-DD). */
+  from: string;
+  /** Chiqqan kun; berilmagan = hozir ham shu guruhda. */
+  to?: string;
 }
 
 export interface Student {
   id: string;
   institutionId: string;
   name: string;
+  /** Asosiy sinf/guruh. Maktabda yagona sinf. */
   classId: string;
+  /** O'quv markazi: qo'shimcha guruhlar (bir o'quvchi bir nechta guruhda). membership.ts */
+  extraClassIds?: string[];
+  /** Guruhlarga qo'shilish/chiqish tarixi. */
+  enrollments?: Enrollment[];
+  /** Katta yoshli o'quvchi (o'quv markazi): ota-ona yo'q, xabarlar o'ziga boradi. */
+  adult?: boolean;
   parentIds: string[];
   /** O'quvchining o'z akkaunti (ixtiyoriy). */
   userId?: string;
+  /** Kvitansiya ID: 6 xonali raqam (to'lov, administratorga murojaat). receipt.ts */
+  receiptId?: string;
   birthDay?: string;
   archived: boolean;
   parentConsent: boolean;
@@ -218,6 +270,20 @@ export interface Invoice {
   dueDay: string;
   payments: PaymentEntry[];
   note?: string;
+  /** Hisob tafsiloti: har guruh narxi va chegirmalar (o'quv markazi). billing.ts */
+  lines?: InvoiceLine[];
+  /** Oxirgi qarz eslatmasi vaqti (ms). */
+  remindedAt?: number;
+}
+
+export interface InvoiceLine {
+  kind: "fee" | "absenceRefund";
+  classId: string;
+  amount: number;
+  /** fee: shu oyda hisoblangan darslar; absenceRefund: qoldirilgan darslar soni. */
+  lessons?: number;
+  /** Oyning hammasi emas (oy o'rtasida qo'shilgan/chiqqan). */
+  partial?: boolean;
 }
 
 export interface Thread {
@@ -270,11 +336,63 @@ export interface Database {
   threads: Thread[];
   messages: Message[];
   notifications: AppNotification[];
+  /** Yangi qiziqqanlar (sinov darsi, o'quvchiga aylanish). */
+  leads: Lead[];
 }
 
 export function emptyDatabase(): Database {
   return {
     version: 2, seq: 1000, institutions: [], users: [], classes: [], students: [], lessons: [], terms: [],
-    grades: [], attendance: [], homeworks: [], submissions: [], invoices: [], threads: [], messages: [], notifications: [],
+    grades: [], attendance: [], homeworks: [], submissions: [], invoices: [], threads: [], messages: [], notifications: [], leads: [],
   };
+}
+
+/** Lid holati: yangi → bog'lanildi → sinov darsi → o'quvchi bo'ldi (yoki rad etdi). */
+export type LeadStatus = "new" | "contacted" | "trial" | "enrolled" | "lost";
+export type LeadSource = "instagram" | "telegram" | "referral" | "outdoor" | "walkin" | "other";
+
+export interface Lead {
+  id: string;
+  institutionId: string;
+  name: string;
+  /** 998XXXXXXXXX */
+  phone: string;
+  /** Qiziqqan yo'nalish (masalan: IELTS, SAT). */
+  interest: string;
+  source: LeadSource;
+  status: LeadStatus;
+  /** Sinov darsi: guruh va kun. */
+  trialClassId?: string;
+  trialDay?: string;
+  /** Sinov darsiga keldimi. */
+  trialCame?: boolean;
+  note?: string;
+  lostReason?: string;
+  /** O'quvchiga aylangan bo'lsa. */
+  studentId?: string;
+  createdAt: number;
+  updatedAt: number;
+  createdBy: string;
+}
+
+/** Filial (o'quv markazining boshqa manzildagi bo'limi). */
+export interface Holiday {
+  id: string;
+  /** YYYY-MM-DD, ikkalasi ham kiradi. */
+  from: string;
+  to: string;
+  name: string;
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  address?: string;
+}
+
+/** O'qituvchiga haq: tushgan puldan foiz, har o'tilgan dars uchun yoki oylik maosh. */
+export interface TeacherPay {
+  mode: "percent" | "perLesson" | "fixed";
+  /** percent: 0..100; perLesson: so'm/dars; fixed: so'm/oy. */
+  value: number;
 }

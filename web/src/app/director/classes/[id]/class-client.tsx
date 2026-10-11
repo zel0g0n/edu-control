@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { BookOpen, Plus } from "lucide-react";
-import { addDays, attendanceRate, invoiceRemaining, weightedAverage, type Lesson } from "@edunazorat/shared";
+import { addDays, attendanceRate, invoiceRemaining, weightedAverage, type Lesson, type Student } from "@edunazorat/shared";
 
 import { LessonForm, StudentForm } from "@/components/director/forms";
 import { ScheduleGrid } from "@/components/director/schedule-grid";
@@ -36,10 +36,10 @@ export function ClassClient() {
     <>
       <PageHeader back="/director/classes" title={cls.name}
         subtitle={`${t("{n} o'quvchi", { n: students.length })} · ${t("Sinf rahbari")}: ${cls.homeroomTeacherId ? app.userById(cls.homeroomTeacherId)?.name : "—"}`}
-        actions={tab === "students" ? <button type="button" className={btn.smPrimary} onClick={() => setAddStudent(true)}><Plus size={16} aria-hidden /> {t("O'quvchi qo'shish")}</button>
+        actions={!app.canManage ? undefined : tab === "students" ? <button type="button" className={btn.smPrimary} onClick={() => setAddStudent(true)}><Plus size={16} aria-hidden /> {t("O'quvchi qo'shish")}</button>
           : tab === "schedule" ? <button type="button" className={btn.smPrimary} onClick={() => setLessonForm({})}><Plus size={16} aria-hidden /> {t("Dars qo'shish")}</button> : undefined}
         below={<Segmented value={tab} onChange={setTab} options={[
-          { value: "students", label: t("O'quvchilar") }, { value: "schedule", label: t("Dars jadvali") }, { value: "journal", label: t("Jurnal") },
+          { value: "students", label: t("O'quvchilar") }, { value: "schedule", label: t("Dars jadvali") }, ...(app.gradesOn(cls.institutionId) ? [{ value: "journal" as const, label: t("Jurnal") }] : []),
         ]} />} />
       <PageBody>
         {tab === "students" && (
@@ -48,14 +48,14 @@ export function ClassClient() {
             columns={[
               { key: "name", header: t("O'quvchi"), sort: (s) => s.name, cell: (s) => <span className="flex items-center gap-2.5"><Avatar name={s.name} image={s.facePhoto} size={32} /><span className="font-medium">{s.name}</span></span> },
               { key: "att", header: t("Davomat"), align: "right", cell: (s) => fmt.percent(attendanceRate(app.attendanceOfStudentBetween(s.id, addDays(app.today, -30), app.today))) },
-              { key: "avg", header: t("O'rtacha"), align: "right", cell: (s) => { const v = weightedAverage(app.gradesOfStudent(s.id, { from: t0 })); return <b className={toneText(avgTone(v))}>{v === null ? "—" : fmt.number(v, 2)}</b>; } },
+              ...(!app.gradesOn(cls.institutionId) ? [] : [{ key: "avg", header: t("O'rtacha"), align: "right" as const, cell: (s: Student) => { const v = weightedAverage(app.gradesOfStudent(s.id, { from: t0 })); return <b className={toneText(avgTone(v))}>{v === null ? "—" : fmt.number(v, 2)}</b>; } }]),
               { key: "debt", header: t("Qarz"), align: "right", cell: (s) => { const d = app.invoicesOfStudent(s.id).reduce((x, i) => x + invoiceRemaining(i), 0); return d ? <span className="text-bad">{fmt.moneyShort(d)}</span> : "—"; } },
             ]} />
         )}
         {tab === "schedule" && (
           <>
-            <ScheduleGrid lessons={app.lessonsOfClass(cls.id)} mode="class" onEdit={(l) => setLessonForm({ lesson: l })} onAdd={(weekday, slot) => setLessonForm({ weekday, slot })} />
-            <p className="mt-2 px-1 text-xs text-muted">{t("Bo'sh katakni bosib dars qo'shing, darsni bosib tahrirlang. To'qnashuvlar avtomatik tekshiriladi.")}</p>
+            <ScheduleGrid lessons={app.lessonsOfClass(cls.id)} mode="class" onEdit={app.canManage ? (l) => setLessonForm({ lesson: l }) : undefined} onAdd={app.canManage ? (weekday, slot) => setLessonForm({ weekday, slot }) : undefined} />
+            {app.canManage && <p className="mt-2 px-1 text-xs text-muted">{t("Bo'sh katakni bosib dars qo'shing, darsni bosib tahrirlang. To'qnashuvlar avtomatik tekshiriladi.")}</p>}
           </>
         )}
         {tab === "journal" && (subjects.length === 0 || !term ? <Card><EmptyState icon={BookOpen} title={t("Jadvalda dars yo'q")} /></Card> : (

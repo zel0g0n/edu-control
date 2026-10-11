@@ -37,7 +37,7 @@ export function ParentFrame({
             child?.id === k.id ? "border-ink bg-ink font-semibold text-bg" : "border-line bg-surface hover:bg-surface-2")}>
           <Avatar name={k.name} image={k.facePhoto} size={28} />
           {k.name.split(" ")[0]}
-          <span className={cx("text-xs", child?.id === k.id ? "opacity-70" : "text-muted")}>{app.schoolClass(k.classId)?.name}</span>
+          <span className={cx("text-xs", child?.id === k.id ? "opacity-70" : "text-muted")}>{app.classNamesOf(k)}</span>
         </button>
       ))}
     </div>
@@ -45,7 +45,7 @@ export function ParentFrame({
 
   return (
     <>
-      <PageHeader title={t(title)} subtitle={kids.length === 1 && child ? `${child.name} · ${app.schoolClass(child.classId)?.name}` : undefined} actions={actions} below={switcher} />
+      <PageHeader title={t(title)} subtitle={kids.length === 1 && child ? `${child.name} · ${app.classNamesOf(child)}` : undefined} actions={actions} below={switcher} />
       <PageBody>
         {child ? children(child) : <Card><EmptyState icon={UserRound} title={t("Farzand biriktirilmagan")} text={t("Muassasa administratoriga murojaat qiling")} /></Card>}
       </PageBody>

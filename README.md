@@ -9,10 +9,12 @@ hisobotlar. Til: o'zbekcha va ruscha.
 |---|---|
 | `shared/` | Umumiy TypeScript: turlar, buyruqlar mantig'i, ruxsatlar, tarjimalar. Web demo va server **bir xil kod** bilan ishlaydi |
 | `web/` | Next.js 16 web ilova: ota-ona, o'quvchi, o'qituvchi, direktor, super admin |
-| `api/` | NestJS 11 server: PostgreSQL, SMS kod bilan kirish, real vaqt, Web Push, Click/Payme |
+| `api/` | NestJS 11 server: PostgreSQL, login/parol (SMS ixtiyoriy), real vaqt, Web Push, Click/Payme |
 | `mobile/` | Flutter ilova (keyingi bosqich, kuchli kompyuter olingach) |
 
 > **Windows uchun bosqichma-bosqich qo'llanma: [QOLLANMA.md](QOLLANMA.md)**
+>
+> **Xavfsizlik va haqiqiy ishga tushirish ro'yxati: [SECURITY.md](SECURITY.md)**
 
 ## Talablar
 
@@ -26,7 +28,8 @@ npm install
 npm run dev:web
 ```
 
-http://localhost:3000 ochiladi. Kirish sahifasidagi demo hisoblardan birini bosing (kod `1111`).
+http://localhost:3000 ochiladi. Kirish sahifasidagi demo hisoblardan birini bosing (parol `246810`).
+Rollar (super admin, direktor, administrator...) va parol berish: **ROLLAR.md**.
 Ma'lumotlar shu brauzerda saqlanadi; profil oynasida "Demo ma'lumotlarni tiklash" bor.
 
 ## 2. Server bilan (haqiqiy ishlatish)

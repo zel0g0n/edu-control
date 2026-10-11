@@ -9,6 +9,9 @@ import {
   isoWeekday,
   monthKey,
   summarizeDay,
+  classIdsOf,
+  gradesEnabled,
+  inClass,
   type AppUser,
   type AttendanceRecord,
   type CommandMap,
@@ -27,8 +30,9 @@ import {
   type Thread,
 } from "@edunazorat/shared";
 
-import { setCurrentLang, type Lang } from "../i18n";
-import { createTransport, type LiveEvent, type Transport } from "./transport";
+import { setCurrentLang, setCurrentVocab, type Lang, type Vocab } from "../i18n";
+import { createTransport, type IssuedCredentials, type LiveEvent, type SignInResult, type Transport } from "./transport";
+export type { IssuedCredentials } from "./transport";
 
 export interface Session {
   userId: string | null;
@@ -120,7 +124,10 @@ export class AppStore {
       }
       this.status = "ready";
     } catch (e) {
-      if (e instanceof CommandError && e.status === 401) {
+      if (e instanceof CommandError && e.key === "err.mfaSetupRequired") {
+        this.mfaSetupNeeded = true;
+        this.status = "ready";
+      } else if (e instanceof CommandError && e.status === 401) {
         this.session = { ...this.session, userId: null, childId: null };
         this.saveSession();
         this.status = "ready";
@@ -163,7 +170,8 @@ export class AppStore {
     const before = new Set(this.db.notifications.map((n) => n.id));
     try {
       this.db = await this.transport!.bootstrap(uid);
-    } catch {
+    } catch (e) {
+      if (e instanceof CommandError && e.status === 401) this.expire();
       return;
     }
     this.announce(this.db.notifications.filter((n) => !before.has(n.id)));
@@ -175,8 +183,114 @@ export class AppStore {
     if (mine.length) this.onNotify?.(mine);
   }
 
-  async signIn(phone: string, code: string): Promise<AppUser> {
-    const userId = await this.transport!.verifyCode(phone, code);
+  /** Birinchi kirish (administrator bergan parol): almashtirish taklif qilinadi. */
+  mustChangePassword = false;
+
+  async authMethods(): Promise<{ sms: boolean }> {
+    return this.transport!.authMethods();
+  }
+
+  /** 2FA: parol to'g'ri, ilova kodi kutilmoqda. */
+  mfaChallenge: { token: string; mustChange: boolean } | null = null;
+  /** Rahbariyat a'zosi 2FA'ni yoqishi shart (ilova ochilmaydi). */
+  mfaSetupNeeded = false;
+
+  /** null: kirish tugamadi (2FA kodi yoki 2FA sozlash kerak). */
+  async signInPassword(login: string, password: string): Promise<AppUser | null> {
+    const r = await this.transport!.loginPassword(login, password);
+    this.mustChangePassword = r.mustChange;
+    return this.afterCredentials(r, r.mustChange);
+  }
+
+  private async afterCredentials(r: SignInResult, mustChange = false): Promise<AppUser | null> {
+    if (r.mfaToken) {
+      this.mfaChallenge = { token: r.mfaToken, mustChange };
+      this.changed();
+      return null;
+    }
+    if (r.mfaSetupRequired) {
+      this.enterMfaSetup(r.userId);
+      return null;
+    }
+    return this.finishSignIn(r.userId);
+  }
+
+  async completeMfa(code: string): Promise<AppUser> {
+    const ch = this.mfaChallenge;
+    if (!ch) throw new CommandError("err.mfaExpired", {}, 401);
+    const r = await this.transport!.mfaVerify(ch.token, code);
+    this.mfaChallenge = null;
+    this.mustChangePassword = ch.mustChange;
+    return this.finishSignIn(r.userId);
+  }
+
+  cancelMfa() {
+    this.mfaChallenge = null;
+    this.changed();
+  }
+
+  private enterMfaSetup(userId: string) {
+    this.session = { ...this.session, userId, childId: null };
+    this.saveSession();
+    this.mfaSetupNeeded = true;
+    this.status = "ready";
+    this.changed();
+  }
+
+  /** 2FA yoqildi: ilovaga kirish davom etadi. */
+  async finishMfaSetup(): Promise<AppUser | null> {
+    this.mfaSetupNeeded = false;
+    const uid = this.session.userId;
+    return uid ? this.finishSignIn(uid) : null;
+  }
+
+  mfaStatus() { return this.transport!.mfaStatus(); }
+  mfaSetup() { return this.transport!.mfaSetup(); }
+  mfaEnable(code: string) { return this.transport!.mfaEnable(code); }
+  mfaDisable(code: string) { return this.transport!.mfaDisable(code); }
+  mfaBackupCodes(code: string) { return this.transport!.mfaBackupCodes(code); }
+
+  async resetPassword(userId: string): Promise<IssuedCredentials> {
+    return this.transport!.resetPassword(userId);
+  }
+
+  async changePassword(current: string, next: string): Promise<void> {
+    // Birinchi kirish oynasi "Parol almashtirildi" xabarini ko'rsatib, yopilganda o'chadi
+    await this.transport!.changePassword(current, next);
+  }
+
+  dismissPasswordPrompt() {
+    this.mustChangePassword = false;
+    this.changed();
+  }
+
+  async credentialStatus(ids: string[]) {
+    return this.transport!.credentialStatus(ids);
+  }
+
+  /** Muassasani o'zgartira oladimi (administrator). Direktor faqat ko'radi. */
+  get canManage(): boolean {
+    const r = this.currentUser?.role;
+    return r === "admin" || r === "superAdmin";
+  }
+
+  /** Filialga cheklangan administrator: muassasa sozlamalarini o'zgartirmaydi. */
+  get branchLimited(): boolean {
+    const u = this.currentUser;
+    return u?.role === "admin" && !!u.branchIds?.length;
+  }
+
+  /** Sozlamalar (filiallar, to'lov, NVR): faqat butun markaz administratori. */
+  get canManageSettings(): boolean {
+    return this.canManage && !this.branchLimited;
+  }
+
+  async signIn(phone: string, code: string): Promise<AppUser | null> {
+    const r = await this.transport!.verifyCode(phone, code);
+    return this.afterCredentials(r);
+  }
+
+  private async finishSignIn(userId: string): Promise<AppUser> {
     this.db = await this.transport!.bootstrap(userId);
     const user = this.db.users.find((u) => u.id === userId)!;
     this.session = { ...this.session, userId, childId: user.childIds[0] ?? null };
@@ -187,6 +301,8 @@ export class AppStore {
   }
 
   async signOut() {
+    this.mfaSetupNeeded = false;
+    this.mfaChallenge = null;
     this.unlisten?.();
     this.unlisten = null;
     await this.transport!.signOut();
@@ -229,9 +345,42 @@ export class AppStore {
   // ------------------------------------------------------------ buyruqlar
 
   async run<K extends CommandName>(name: K, input: CommandMap[K]): Promise<Patch> {
-    const patch = await this.transport!.command(name, input);
+    let patch: Patch;
+    try {
+      patch = await this.transport!.command(name, input);
+    } catch (e) {
+      // Sessiya bekor qilingan (boshqa qurilmadan chiqildi, parol tiklandi): kirish sahifasiga
+      if (e instanceof CommandError && e.status === 401) this.expire();
+      throw e;
+    }
     this.apply(patch);
     return patch;
+  }
+
+  /** Sessiya tugadi: ma'lumotlar xotiradan tozalanadi, kirish sahifasi ochiladi. */
+  private expire() {
+    this.unlisten?.();
+    this.unlisten = null;
+    this.db = emptyDatabase();
+    this.session = { ...this.session, userId: null, childId: null };
+    this.saveSession();
+    this.changed();
+  }
+
+  sessions() {
+    return this.transport!.sessions();
+  }
+
+  revokeOtherSessions() {
+    return this.transport!.revokeOtherSessions();
+  }
+
+  audit(before?: string) {
+    return this.transport!.audit(before);
+  }
+
+  signFileUrls(urls: string[]) {
+    return this.transport!.signFileUrls(urls);
   }
 
   upload(file: File) {
@@ -252,6 +401,15 @@ export class AppStore {
   institution(id?: string): Institution | undefined {
     return id ? this.db.institutions.find((i) => i.id === id) : undefined;
   }
+  /** Atamalar: o'quv markazida "guruh". Ota-ona/o'quvchi uchun farzandining muassasasi. */
+  get vocab(): Vocab {
+    const u = this.currentUser;
+    const instId = u?.institutionId ?? (u ? this.db.students.find((s) => s.id === (u.studentId ?? u.childIds[0]))?.institutionId : undefined);
+    const v: Vocab = this.db.institutions.find((i) => i.id === instId)?.type === "center" ? "center" : "school";
+    setCurrentVocab(v);
+    return v;
+  }
+
   get myInstitution(): Institution | undefined {
     return this.institution(this.currentUser?.institutionId);
   }
@@ -265,7 +423,19 @@ export class AppStore {
     return this.db.lessons.find((l) => l.id === id);
   }
   studentsOfClass(classId: string, includeArchived = false): Student[] {
-    return this.db.students.filter((s) => s.classId === classId && (includeArchived || !s.archived)).sort(byName);
+    return this.db.students.filter((s) => inClass(s, classId) && (includeArchived || !s.archived)).sort(byName);
+  }
+  /** O'quvchining barcha sinf/guruhlari (maktabda bitta). */
+  classesOfStudent(s: Student): SchoolClass[] {
+    return classIdsOf(s).map((id) => this.schoolClass(id)).filter((c): c is SchoolClass => !!c);
+  }
+  /** "5-A" yoki "IELTS B2, SAT Math". */
+  classNamesOf(s: Student): string {
+    return this.classesOfStudent(s).map((c) => c.name).join(", ");
+  }
+  /** Muassasada baho tizimi yoqilganmi (o'quv markazi o'chirib qo'yishi mumkin). */
+  gradesOn(instId?: string): boolean {
+    return gradesEnabled(this.institution(instId)?.settings);
   }
   studentsOfInstitution(instId: string, includeArchived = false): Student[] {
     return this.db.students.filter((s) => s.institutionId === instId && (includeArchived || !s.archived)).sort(byName);
@@ -295,6 +465,28 @@ export class AppStore {
   }
   lessonsOfClassOn(classId: string, weekday: number): Lesson[] {
     return this.db.lessons.filter((l) => l.classId === classId && l.weekday === weekday).sort(byStart);
+  }
+  /** O'quvchining barcha guruhlaridagi darslar (bir kunda). */
+  lessonsOfStudentOn(s: Student, weekday: number): Lesson[] {
+    const ids = new Set(classIdsOf(s));
+    return this.db.lessons.filter((l) => ids.has(l.classId) && l.weekday === weekday).sort(byStart);
+  }
+  lessonsOfStudent(s: Student): Lesson[] {
+    const ids = new Set(classIdsOf(s));
+    return this.db.lessons.filter((l) => ids.has(l.classId)).sort(byDayStart);
+  }
+  subjectsOfStudent(s: Student): string[] {
+    return [...new Set(this.lessonsOfStudent(s).map((l) => l.subject))].sort();
+  }
+  /** O'quvchiga dars o'tadigan o'qituvchilar (barcha guruhlari). */
+  teachersOfStudent(s: Student): { teacher: AppUser; subjects: string[] }[] {
+    const map = new Map<string, { teacher: AppUser; subjects: Set<string> }>();
+    for (const c of classIdsOf(s)) for (const x of this.teachersOfClass(c)) {
+      const e = map.get(x.teacher.id) ?? { teacher: x.teacher, subjects: new Set<string>() };
+      for (const sub of x.subjects) e.subjects.add(sub);
+      map.set(x.teacher.id, e);
+    }
+    return [...map.values()].map((e) => ({ teacher: e.teacher, subjects: [...e.subjects].sort() })).sort((a, b) => a.teacher.name.localeCompare(b.teacher.name));
   }
   lessonsOfTeacherOn(teacherId: string, weekday: number): Lesson[] {
     return this.db.lessons.filter((l) => l.teacherId === teacherId && l.weekday === weekday).sort(byStart);
@@ -335,7 +527,7 @@ export class AppStore {
   }
   daySummary(studentId: string, day: string) {
     const s = this.student(studentId);
-    const lessons = s ? this.lessonsOfClassOn(s.classId, isoWeekday(day)) : [];
+    const lessons = s ? this.lessonsOfStudentOn(s, isoWeekday(day)) : [];
     return summarizeDay(this.attendanceOfStudentOn(studentId, day), lessons);
   }
   /** O'quvchi davomatining kunlar bo'yicha tarixi (yangisi birinchi). */
@@ -368,6 +560,11 @@ export class AppStore {
 
   homeworkOfClass(classId: string): Homework[] {
     return this.db.homeworks.filter((h) => h.classId === classId).sort((a, b) => b.dueDay.localeCompare(a.dueDay));
+  }
+  /** O'quvchining barcha guruhlaridagi vazifalar. */
+  homeworkOfStudent(s: Student): Homework[] {
+    const ids = new Set(classIdsOf(s));
+    return this.db.homeworks.filter((h) => ids.has(h.classId)).sort((a, b) => b.dueDay.localeCompare(a.dueDay));
   }
   homeworkOfTeacher(teacherId: string): Homework[] {
     return this.db.homeworks.filter((h) => h.teacherId === teacherId).sort((a, b) => b.dueDay.localeCompare(a.dueDay));

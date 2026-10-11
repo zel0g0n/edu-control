@@ -6,6 +6,7 @@ import { emptyDatabase, seedDatabase } from "@edunazorat/shared";
 import { loadConfig } from "../config";
 import { migrate } from "../db/schema";
 import { connect } from "../db/sql";
+import { ClusterService } from "../cluster.service";
 import { StoreService } from "../store.service";
 
 async function main() {
@@ -16,7 +17,7 @@ async function main() {
   const config = loadConfig();
   const sql = await connect(config.databaseUrl);
   await migrate(sql);
-  const store = new StoreService(sql, config);
+  const store = new StoreService(sql, config, new ClusterService(sql));
   store.db = emptyDatabase();
   await store.replaceAll(seedDatabase(Date.now()));
   console.log("Demo ma'lumotlar yozildi. Kirish: 998905555555 (ota-ona), 998903333333 (o'qituvchi), 998901111111 (direktor), 998900000000 (super admin)");

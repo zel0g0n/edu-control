@@ -8,6 +8,7 @@ import { store, useStoreVersion } from "@/lib/data/store";
 import { translate } from "@/lib/i18n";
 import { notificationText } from "@/lib/notif";
 import { enablePush, pushState, showSystemNotification } from "@/lib/push";
+import { MfaSetupScreen } from "./mfa";
 import { cx } from "./ui";
 
 type ToastKind = "ok" | "error" | "info";
@@ -20,7 +21,7 @@ export function useToast(): ToastFn {
 
 /** Xatoni foydalanuvchi tilidagi matnga aylantirish. */
 export function errorText(e: unknown): string {
-  if (e instanceof CommandError) return translate(store.lang, e.key, e.params);
+  if (e instanceof CommandError) return translate(store.lang, e.key, e.params, store.vocab);
   return translate(store.lang, "err.network");
 }
 
@@ -104,7 +105,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const Icon = toast?.kind === "error" ? CircleAlert : toast?.kind === "ok" ? CircleCheck : Info;
   return (
     <ToastContext.Provider value={show}>
-      {children}
+      {/* Rahbariyat 2FA'ni yoqmaguncha ilova ochilmaydi */}
+      {store.mfaSetupNeeded ? <MfaSetupScreen /> : children}
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex justify-center px-4 md:bottom-8">
         {toast && (
           <div key={toast.id} role="status"

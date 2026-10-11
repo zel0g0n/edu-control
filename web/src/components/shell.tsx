@@ -7,7 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3, Bell, BellRing, BookOpen, Building2, CalendarCheck, CalendarDays, ChevronLeft, FlaskConical,
   GraduationCap, Home, LayoutDashboard, LogOut, Megaphone, MessagesSquare, MoreHorizontal, NotebookPen, RotateCcw,
-  Settings, Star, UserRound, Users, Wallet,
+  HandCoins, History, KeyRound, MonitorSmartphone, Settings, UserRoundSearch, ShieldCheck, Star, UserRound, Users, Wallet,
 } from "lucide-react";
 import type { UserRole } from "@edunazorat/shared";
 
@@ -15,6 +15,8 @@ import { useApp, type AppStore } from "@/lib/data/store";
 import { fmt } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
 import { enablePush, pushState } from "@/lib/push";
+import { DevicesModal, FirstLoginPasswordPrompt, PasswordChangeModal } from "./credentials";
+import { MfaModal } from "./mfa";
 import { Logo, useRun } from "./providers";
 import { ThemeSetting, ThemeToggle } from "./theme-toggle";
 import { Avatar, btn, cx, Modal, PageSkeleton, Pill, Segmented } from "./ui";
@@ -31,17 +33,23 @@ export interface NavItem {
 }
 
 export function homeFor(role: UserRole): string {
-  return { parent: "/parent", teacher: "/teacher", director: "/director", superAdmin: "/admin", student: "/student" }[role];
+  // Administrator direktor sahifalarida ishlaydi (direktor ko'radi, administrator boshqaradi)
+  return { parent: "/parent", teacher: "/teacher", director: "/director", admin: "/director", superAdmin: "/admin", student: "/student" }[role];
 }
 
 function navFor(app: AppStore, role: UserRole): NavItem[] {
   const u = app.currentUser;
   const msgs = u ? app.unreadMessages(u.id) : 0;
+  // O'quv markazi baho tizimini o'chirgan bo'lsa "Baholar" bo'limi yo'q
+  const learnerInst = u ? (u.institutionId ?? app.student(u.studentId ?? u.childIds[0] ?? "")?.institutionId) : undefined;
+  const gradesOn = app.gradesOn(learnerInst);
+  // Bugungi sinov darslari (lidlar)
+  const leadsToday = app.db.leads.filter((l) => l.status === "trial" && l.trialDay === app.today && l.trialCame === undefined).length;
   switch (role) {
     case "parent":
       return [
         { href: "/parent", label: "Bosh sahifa", icon: Home, exact: true, primary: true },
-        { href: "/parent/grades", label: "Baholar", icon: Star, primary: true },
+        ...(gradesOn ? [{ href: "/parent/grades", label: "Baholar", icon: Star, primary: true }] : []),
         { href: "/parent/homework", label: "Vazifalar", icon: NotebookPen, primary: true },
         { href: "/parent/attendance", label: "Davomat", icon: CalendarCheck },
         { href: "/parent/schedule", label: "Dars jadvali", icon: CalendarDays },
@@ -53,9 +61,14 @@ function navFor(app: AppStore, role: UserRole): NavItem[] {
       return [
         { href: "/student", label: "Bugun", icon: Home, exact: true, primary: true },
         { href: "/student/homework", label: "Vazifalar", icon: NotebookPen, primary: true },
-        { href: "/student/grades", label: "Baholar", icon: Star, primary: true },
+        ...(gradesOn ? [{ href: "/student/grades", label: "Baholar", icon: Star, primary: true }] : []),
         { href: "/student/schedule", label: "Dars jadvali", icon: CalendarDays, primary: true },
         { href: "/student/attendance", label: "Davomat", icon: CalendarCheck },
+        // Katta yoshli tinglovchi (ota-onasiz) to'lovni o'zi qiladi
+        ...(app.student(u?.studentId ?? "")?.adult ? [
+          { href: "/student/payments", label: "To'lovlar", icon: Wallet },
+          { href: "/student/messages", label: "Yozishmalar", icon: MessagesSquare, badge: msgs },
+        ] : []),
       ];
     case "teacher":
       return [
@@ -65,20 +78,42 @@ function navFor(app: AppStore, role: UserRole): NavItem[] {
         { href: "/teacher/messages", label: "Yozishmalar", icon: MessagesSquare, badge: msgs, primary: true },
       ];
     case "director":
+    case "admin":
       return [
         { href: "/director", label: "Boshqaruv paneli", icon: LayoutDashboard, exact: true, primary: true },
         { href: "/director/students", label: "O'quvchilar", icon: GraduationCap, primary: true },
         { href: "/director/teachers", label: "O'qituvchilar", icon: Users },
         { href: "/director/classes", label: "Sinflar", icon: BookOpen },
         { href: "/director/schedule", label: "Dars jadvali", icon: CalendarDays },
+        { href: "/director/leads", label: "Lidlar", icon: UserRoundSearch, badge: leadsToday },
         { href: "/director/payments", label: "To'lovlar", icon: Wallet, primary: true },
         { href: "/director/reports", label: "Hisobotlar", icon: BarChart3, primary: true },
-        { href: "/director/announce", label: "E'lonlar", icon: Megaphone },
+        { href: "/director/payroll", label: "O'qituvchi ulushi", icon: HandCoins },
+        ...(u?.role === "admin" ? [{ href: "/director/announce", label: "E'lonlar", icon: Megaphone }] : []),
         { href: "/director/settings", label: "Sozlamalar", icon: Settings },
+        ...(u?.role === "director" ? [
+          { href: "/director/staff", label: "Administratorlar", icon: ShieldCheck },
+          { href: "/director/audit", label: "Faoliyat jurnali", icon: History },
+        ] : []),
       ];
     case "superAdmin":
       return [{ href: "/admin", label: "Muassasalar", icon: Building2, exact: true, primary: true }];
   }
+}
+
+/** Direktor uchun: bu bo'limni administrator boshqaradi. */
+export function ReadOnlyNote() {
+  const t = useT();
+  return (
+    <p className="mb-4 rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-muted">
+      {t("Siz direktor sifatida hamma ma'lumotni ko'rasiz. O'zgartirishlarni administrator kiritadi (Administratorlar bo'limida qo'shing).")}
+    </p>
+  );
+}
+
+/** Administrator direktor bo'limida ishlaydi (direktor ko'radi, administrator boshqaradi). */
+function fitsRole(area: UserRole, r?: UserRole): boolean {
+  return r === area || (area === "director" && r === "admin");
 }
 
 /** Rol tekshiruvi + chap panel (kompyuter) / pastki menyu (telefon). */
@@ -89,11 +124,11 @@ export function AppShell({ role, children }: { role: UserRole; children: React.R
   const pathname = usePathname();
   const [more, setMore] = useState(false);
   const user = app.currentUser;
-  const allowed = user?.role === role;
+  const allowed = fitsRole(role, user?.role);
 
   useEffect(() => {
     if (!user) router.replace("/login");
-    else if (user.role !== role) router.replace(homeFor(user.role));
+    else if (!fitsRole(role, user.role)) router.replace(homeFor(user.role));
   }, [user, role, router]);
 
   if (!allowed) return <PageSkeleton />;
@@ -135,6 +170,7 @@ export function AppShell({ role, children }: { role: UserRole; children: React.R
       </aside>
 
       <div className="min-w-0 flex-1 pb-28 md:pb-10">{children}</div>
+      <FirstLoginPasswordPrompt />
 
       <nav aria-label={t("Asosiy menyu")}
         className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-surface/95 px-1 pt-1.5 pb-[max(env(safe-area-inset-bottom),10px)] backdrop-blur md:hidden">
@@ -235,6 +271,9 @@ export function AccountButton({ dark }: { dark?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [push, setPush] = useState(pushState);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
+  const [mfaOpen, setMfaOpen] = useState(false);
   const user = app.currentUser;
   if (!user) return null;
   const inst = app.institution(user.institutionId);
@@ -255,7 +294,7 @@ export function AccountButton({ dark }: { dark?: boolean }) {
           <Avatar name={user.name} size={56} />
           <div className="min-w-0">
             <div className="truncate text-lg font-bold">{user.name}</div>
-            <div className="text-sm text-muted">{t(`role.${user.role}`)} · {fmt.phone(user.phone)}</div>
+            <div className="text-sm text-muted">{t(`role.${user.role}`)} · {user.login ? user.login : fmt.phone(user.phone)}</div>
             {inst && <div className="truncate text-sm text-muted">{inst.name}</div>}
           </div>
         </div>
@@ -291,6 +330,15 @@ export function AccountButton({ dark }: { dark?: boolean }) {
               <RotateCcw size={18} aria-hidden /> {t("Demo ma'lumotlarni tiklash")}
             </button>
           )}
+          <button type="button" className={btn.outline} onClick={() => { setOpen(false); setPwOpen(true); }}>
+            <KeyRound size={18} aria-hidden /> {t("Parolni almashtirish")}
+          </button>
+          <button type="button" className={btn.outline} onClick={() => { setOpen(false); setMfaOpen(true); }}>
+            <ShieldCheck size={18} aria-hidden /> {t("Ikki bosqichli kirish")}
+          </button>
+          <button type="button" className={btn.outline} onClick={() => { setOpen(false); setDevOpen(true); }}>
+            <MonitorSmartphone size={18} aria-hidden /> {t("Qurilmalar")}
+          </button>
           <button type="button" className={btn.outline} onClick={async () => {
             setOpen(false);
             await app.signOut();
@@ -300,6 +348,9 @@ export function AccountButton({ dark }: { dark?: boolean }) {
           </button>
         </div>
       </Modal>
+      {pwOpen && <PasswordChangeModal onClose={() => setPwOpen(false)} />}
+      {devOpen && <DevicesModal onClose={() => setDevOpen(false)} />}
+      {mfaOpen && <MfaModal onClose={() => setMfaOpen(false)} />}
     </>
   );
 }

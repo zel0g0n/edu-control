@@ -40,7 +40,15 @@ export const notifyPayment = (p: { student: string; month: string; amount: numbe
   link: "/parent/payments",
 });
 
-export const notifyMessage = (p: { from: string; student: string; text: string; threadId: string; forRole: "parent" | "teacher" }): NotificationDraft => ({
+/** Qarz eslatmasi (administrator yuboradi). */
+export const notifyDebt = (p: { student: string; month: string; remaining: number; receipt: string; forStudent: boolean }): NotificationDraft => ({
+  type: "payment",
+  key: p.receipt ? "notif.debt" : "notif.debt.noId",
+  params: { student: p.student, month: p.month, remaining: p.remaining, receipt: p.receipt },
+  link: p.forStudent ? "/student/payments" : "/parent/payments",
+});
+
+export const notifyMessage = (p: { from: string; student: string; text: string; threadId: string; forRole: "parent" | "teacher" | "student" }): NotificationDraft => ({
   type: "message",
   key: "notif.message",
   params: { from: p.from, student: p.student, text: p.text.length > 80 ? `${p.text.slice(0, 80)}…` : p.text },

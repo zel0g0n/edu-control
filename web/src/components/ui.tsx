@@ -541,9 +541,10 @@ export function DataTable<T>({
             </div>
             <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[13px]">
               {rest.filter((c) => !c.hideOnMobile).map((c) => (
-                <div key={c.key} className="flex min-w-0 flex-col">
-                  <dt className="text-[11px] text-muted">{c.header}</dt>
-                  <dd className="tabular min-w-0 truncate">{c.cell(row)}</dd>
+                // Sarlavhasiz ustun (tugmalar) telefonda to'liq kenglikda: tor katakda kesilib qolmasin
+                <div key={c.key} className={cx("flex min-w-0 flex-col", !c.header && "col-span-2 mt-1.5")}>
+                  {c.header && <dt className="text-[11px] text-muted">{c.header}</dt>}
+                  <dd className={cx("tabular min-w-0", !!c.header && "truncate")}>{c.cell(row)}</dd>
                 </div>
               ))}
             </dl>

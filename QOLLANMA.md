@@ -67,7 +67,7 @@ npm run dev:web
 `Ready` yozuvi chiqqach brauzerda oching: **http://localhost:3000**
 
 - Kirish sahifasida demo hisoblardan birini bosing (ota-ona, o'qituvchi, direktor, admin...).
-- SMS kod har doim: **1111**
+- Demo parol: **246810** (SMS kod bilan kirsangiz: **1111**)
 - Ma'lumotlar shu brauzerning o'zida saqlanadi. Tozalash: profil oynasi → "Demo ma'lumotlarni tiklash".
 - To'xtatish: terminalda **Ctrl + C**.
 
@@ -370,6 +370,10 @@ git clone https://github.com/<login>/edunazorat.git && cd edunazorat
 npm install
 cp api/.env.example api/.env && nano api/.env
 #   NODE_ENV=production
+#   APP_ENV=production        (xavfli sozlama bo'lsa server ishga tushmaydi: SECURITY.md)
+#   AUTH_COOKIE=true          (maktab.uz + api.maktab.uz bitta domen: httpOnly cookie)
+#   TRUST_PROXY=1             (Caddy ortida)
+#   MFA_KEY=...               (2FA kalitlari uchun; SECURITY.md)
 #   DATABASE_URL=postgres://edu:KUCHLI_PAROL@localhost:5432/edunazorat
 #   JWT_SECRET=...            (3.2 dagi buyruq bilan)
 #   WEB_ORIGIN=https://maktab.uz
@@ -381,8 +385,14 @@ npm run create-admin -w api -- 998901234567 "Ismingiz"
 
 # Doimiy ishlashi (server qayta yoqilganda ham)
 pm2 start "npm start -w api" --name api
+# Ko'proq yuklama uchun ikkinchi nusxa (bitta Postgres bilan; SECURITY.md "Bir nechta server nusxasi"):
+#   PORT=4001 pm2 start "npm start -w api" --name api2   va Caddyfile'da: reverse_proxy localhost:4000 localhost:4001
 pm2 start "npm start -w web" --name web
 pm2 save && pm2 startup     # chiqqan buyruqni bajaring
+
+# Kunlik zaxira nusxa (SECURITY.md, 2-bo'lim)
+sudo apt install -y postgresql-client
+( crontab -l 2>/dev/null; echo "30 2 * * * BACKUP_DIR=$HOME/backups DATABASE_URL=postgres://edu:KUCHLI_PAROL@localhost:5432/edunazorat $PWD/tools/ops/backup.sh >> $HOME/backup.log 2>&1" ) | crontab -
 ```
 
 Domenning DNS'ida `maktab.uz` va `api.maktab.uz` ni VPS IP'siga yo'naltiring, so'ng

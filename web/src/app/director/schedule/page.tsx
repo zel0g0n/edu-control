@@ -26,7 +26,7 @@ export default function DirectorSchedule() {
   return (
     <>
       <PageHeader title={t("Dars jadvali")}
-        actions={<button type="button" className={btn.smPrimary} onClick={() => setForm({})}><Plus size={16} aria-hidden /> {t("Dars qo'shish")}</button>}
+        actions={app.canManage && <button type="button" className={btn.smPrimary} onClick={() => setForm({})}><Plus size={16} aria-hidden /> {t("Dars qo'shish")}</button>}
         below={
           <div className="flex flex-wrap items-center gap-2">
             <Segmented value={mode} onChange={setMode} options={[{ value: "class", label: t("Sinf bo'yicha") }, { value: "teacher", label: t("O'qituvchi bo'yicha") }]} />
@@ -40,8 +40,8 @@ export default function DirectorSchedule() {
         } />
       <PageBody>
         {classes.length === 0 ? <Card><EmptyState icon={CalendarDays} title={t("Avval sinf yarating")} /></Card> : (
-          <ScheduleGrid lessons={lessons} mode={mode} onEdit={(l) => setForm({ lesson: l })}
-            onAdd={mode === "class" ? (weekday, slot) => setForm({ weekday, slot }) : undefined} />
+          <ScheduleGrid lessons={lessons} mode={mode} onEdit={app.canManage ? (l) => setForm({ lesson: l }) : undefined}
+            onAdd={app.canManage && mode === "class" ? (weekday, slot) => setForm({ weekday, slot }) : undefined} />
         )}
       </PageBody>
       {form && <LessonForm classId={mode === "class" ? classId : undefined} lesson={form.lesson} weekday={form.weekday} slot={form.slot} onClose={() => setForm(null)} />}

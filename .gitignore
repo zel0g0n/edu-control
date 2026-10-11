@@ -11,3 +11,6 @@ tools/face-bench/*.bin
 tools/face-bench/*.onnx
 tools/face-bench/*.h5
 web/public/face/
+
+web/test-results/
+web/playwright-report/

@@ -11,6 +11,7 @@ import {
   suggestTermGrade, weightedAverage, type AttendanceRecord, type Grade, type Homework, type Lesson, type Student, type Term,
 } from "@edunazorat/shared";
 
+import { HolidayNote } from "./holiday";
 import { useApp, type AppStore } from "@/lib/data/store";
 import { fmt, gradeComment, termLabel, weekdayName, weekdayShort } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
@@ -28,7 +29,7 @@ export function useLearnerStats(app: AppStore, s: Student) {
   const from = term?.startDay ?? addDays(app.today, -60);
   const grades = app.gradesOfStudent(s.id, { from, to: app.today });
   const att = app.attendanceOfStudentBetween(s.id, addDays(app.today, -30), app.today);
-  const hws = app.homeworkOfClass(s.classId).filter((h) => h.dueDay <= app.today && h.dueDay >= from);
+  const hws = app.homeworkOfStudent(s).filter((h) => h.dueDay <= app.today && h.dueDay >= from);
   const done = hws.filter((h) => app.submission(h.id, s.id)).length;
   return { term, avg: weightedAverage(grades), gradeCount: grades.length, rate: attendanceRate(att), hwTotal: hws.length, hwDone: done };
 }
@@ -46,24 +47,25 @@ export function LearnerHome({ student: s, base, showPayments }: { student: Stude
   const app = useApp();
   const t = useT();
   const stats = useLearnerStats(app, s);
-  const cls = app.schoolClass(s.classId);
+  const classNames = app.classNamesOf(s);
   const summary = app.daySummary(s.id, app.today);
   const wd = isoWeekday(app.today);
-  const lessons = wd === 7 ? [] : app.lessonsOfClassOn(s.classId, wd);
+  const lessons = wd === 7 ? [] : app.lessonsOfStudentOn(s, wd);
   const recent = app.gradesOfStudent(s.id).slice(0, 6);
-  const upcoming = app.homeworkOfClass(s.classId).filter((h) => h.dueDay >= app.today).sort((a, b) => a.dueDay.localeCompare(b.dueDay)).slice(0, 4);
+  const upcoming = app.homeworkOfStudent(s).filter((h) => h.dueDay >= app.today).sort((a, b) => a.dueDay.localeCompare(b.dueDay)).slice(0, 4);
   const debt = showPayments ? app.invoicesOfStudent(s.id).reduce((sum, i) => sum + invoiceRemaining(i), 0) : 0;
   const overdue = showPayments && app.invoicesOfStudent(s.id).some((i) => isOverdue(i, app.today));
 
   return (
     <>
+      <HolidayNote institutionId={s.institutionId} />
       {/* Bugungi holat */}
       <Card className="overflow-hidden">
         <div className="flex items-center gap-4 p-4 md:p-5">
           <Avatar name={s.name} image={summary.snapshot ?? s.facePhoto} size={64} ring={summary.status ? ATT_TONE[summary.status] === "ok" ? "ok" : ATT_TONE[summary.status] === "warn" ? "warn" : "bad" : undefined} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-lg font-bold">{s.name}</div>
-            <div className="text-sm text-muted">{cls?.name} · {app.institution(s.institutionId)?.name}</div>
+            <div className="text-sm text-muted">{classNames} · {app.institution(s.institutionId)?.name}</div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {summary.status ? (
                 <>
@@ -116,13 +118,13 @@ export function LearnerHome({ student: s, base, showPayments }: { student: Stude
               </ListCard>
             )}
           </Section>
-          <Section title={t("So'nggi baholar")} action={<SectionLink href={`${base}/grades`}>{t("Barchasi")}</SectionLink>}>
+          {app.gradesOn(s.institutionId) && <Section title={t("So'nggi baholar")} action={<SectionLink href={`${base}/grades`}>{t("Barchasi")}</SectionLink>}>
             {recent.length === 0 ? (
               <Card><EmptyState compact icon={Star} title={t("Hali baho yo'q")} /></Card>
             ) : (
               <ListCard>{recent.map((g) => <GradeRow key={g.id} grade={g} />)}</ListCard>
             )}
-          </Section>
+          </Section>}
         </div>
       </div>
     </>
@@ -197,7 +199,7 @@ export function LearnerGrades({ student: s }: { student: Student }) {
   const [termId, setTermId] = useState<string>(() => app.currentTerm(s.institutionId)?.id ?? "all");
   const [detail, setDetail] = useState<Grade | null>(null);
   const term = terms.find((x) => x.id === termId);
-  const subjects = app.subjectsOfClass(s.classId);
+  const subjects = app.subjectsOfStudent(s);
   const range = term ? { from: term.startDay, to: term.endDay } : {};
 
   const rows = subjects.map((subject) => {
@@ -342,7 +344,7 @@ export function LearnerAttendance({ student: s }: { student: Student }) {
   const records = app.attendanceOfStudentBetween(s.id, days[0], days[days.length - 1]);
   const count = (st: AttendanceRecord["status"]) => records.filter((r) => r.status === st).length;
   const rate = attendanceRate(records);
-  const dayLessons = app.lessonsOfClassOn(s.classId, isoWeekday(day));
+  const dayLessons = app.lessonsOfStudentOn(s, isoWeekday(day));
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
@@ -417,12 +419,15 @@ export function LearnerAttendance({ student: s }: { student: Student }) {
 
 // ------------------------------------------------------------------ jadval
 
-export function WeekSchedule({ classId, highlightTeacherId }: { classId: string; highlightTeacherId?: string }) {
+/** Haftalik jadval: bitta sinf (classId) yoki o'quvchining barcha guruhlari (student). */
+export function WeekSchedule({ classId, student, highlightTeacherId }: { classId?: string; student?: Student; highlightTeacherId?: string }) {
   const app = useApp();
   const t = useT();
   const today = isoWeekday(app.today);
   const [wd, setWd] = useState(today === 7 ? 1 : today);
-  const lessons = app.lessonsOfClass(classId);
+  const lessons = student ? app.lessonsOfStudent(student) : app.lessonsOfClass(classId ?? "");
+  // Bir nechta guruh bo'lsa, darsda guruh nomi ham ko'rinadi
+  const multi = !!student && (student.extraClassIds?.length ?? 0) > 0;
   const days = [1, 2, 3, 4, 5, 6].filter((d) => lessons.some((l) => l.weekday === d) || d <= 5);
 
   const cell = (l: Lesson) => {
@@ -432,7 +437,7 @@ export function WeekSchedule({ classId, highlightTeacherId }: { classId: string;
         highlightTeacherId && l.teacherId === highlightTeacherId && "border-l-4 border-l-margin")}>
         <div className="tabular text-xs text-muted">{l.start}–{l.end} · {l.room}</div>
         <div className="truncate font-semibold">{l.subject}</div>
-        <div className="truncate text-xs text-muted">{app.userById(l.teacherId)?.name}</div>
+        <div className="truncate text-xs text-muted">{app.userById(l.teacherId)?.name}{multi && ` · ${app.schoolClass(l.classId)?.name}`}</div>
       </div>
     );
   };
@@ -499,11 +504,11 @@ export function LearnerHomeworkList({ student: s, hrefFor, onOpen }: { student: 
   const t = useT();
   const [tab, setTab] = useState<"current" | "past">("current");
   const [subject, setSubject] = useState<string | null>(null);
-  const all = app.homeworkOfClass(s.classId).filter((h) => !subject || h.subject === subject);
+  const all = app.homeworkOfStudent(s).filter((h) => !subject || h.subject === subject);
   const list = tab === "current"
     ? all.filter((h) => h.dueDay >= app.today).sort((a, b) => a.dueDay.localeCompare(b.dueDay))
     : all.filter((h) => h.dueDay < app.today);
-  const subjects = [...new Set(app.homeworkOfClass(s.classId).map((h) => h.subject))].sort();
+  const subjects = [...new Set(app.homeworkOfStudent(s).map((h) => h.subject))].sort();
   return (
     <>
       <div className="flex flex-wrap items-center gap-3">

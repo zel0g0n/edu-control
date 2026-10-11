@@ -4,6 +4,11 @@ export interface Sql {
   query<T = Row>(text: string, params?: unknown[]): Promise<T[]>;
   /** Tranzaksiya: hammasi yoki hech narsa. */
   tx<T>(fn: (q: Sql) => Promise<T>): Promise<T>;
+  /**
+   * Postgres LISTEN: boshqa server nusxalaridan xabar (NOTIFY). Ulanish uzilsa qayta ulanadi.
+   * Qaytgan funksiya tinglashni to'xtatadi.
+   */
+  listen(channel: string, fn: (payload: string) => void): Promise<() => Promise<void>>;
   close(): Promise<void>;
 }
 
@@ -19,6 +24,10 @@ export async function connect(url: string): Promise<Sql> {
         return (await q.query<T>(text, params as never[])).rows;
       },
       tx: (fn) => db.transaction((t) => fn(wrap(t as never))) as never,
+      listen: async (channel, fn) => {
+        const off = await db.listen(channel, fn);
+        return async () => { await off(); };
+      },
       close: async () => undefined,
     });
     const sql = wrap(db);
@@ -44,6 +53,9 @@ export async function connect(url: string): Promise<Sql> {
     tx: () => {
       throw new Error("ichki tranzaksiya qo'llanmaydi");
     },
+    listen: () => {
+      throw new Error("tranzaksiya ichida LISTEN yo'q");
+    },
     close: async () => undefined,
   });
   return {
@@ -61,6 +73,38 @@ export async function connect(url: string): Promise<Sql> {
       } finally {
         client.release();
       }
+    },
+    // LISTEN uchun alohida doimiy ulanish (pool ulanishlari qaytariladi, ularda LISTEN ishlamaydi)
+    async listen(channel: string, fn: (payload: string) => void) {
+      const { Client } = await import("pg");
+      let client: InstanceType<typeof Client> | null = null;
+      let stopped = false;
+      let retry: NodeJS.Timeout | undefined;
+      const connectListener = async () => {
+        if (stopped) return;
+        const c = new Client({ connectionString: url, ssl: /sslmode=require|neon\.tech/.test(url) ? { rejectUnauthorized: true } : undefined, keepAlive: true });
+        c.on("notification", (m) => { if (m.channel === channel) fn(m.payload ?? ""); });
+        c.on("error", () => {
+          // Uzildi: qayta ulanamiz (shu orada o'tkazib yuborilganlarni StoreService so'rov bilan to'ldiradi)
+          c.end().catch(() => undefined);
+          if (client === c) client = null;
+          if (!stopped) retry = setTimeout(() => void connectListener(), 2000);
+        });
+        try {
+          await c.connect();
+          await c.query(`LISTEN "${channel.replace(/"/g, "")}"`);
+          client = c;
+        } catch {
+          c.end().catch(() => undefined);
+          if (!stopped) retry = setTimeout(() => void connectListener(), 2000);
+        }
+      };
+      await connectListener();
+      return async () => {
+        stopped = true;
+        clearTimeout(retry);
+        await client?.end().catch(() => undefined);
+      };
     },
     close: () => pool.end(),
   };

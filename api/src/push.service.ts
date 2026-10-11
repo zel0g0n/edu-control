@@ -29,6 +29,8 @@ export class PushService {
     }
     this.enabled = ok;
     store.events.on("change", (c: Change) => {
+      // Push faqat o'zgarish bajarilgan nusxadan (boshqalar takrorlamasin)
+      if (!c.local) return;
       const fresh = (c.patch.upsert?.notifications ?? []).filter((n) => !n.read && store.clock() - n.time < 60_000);
       if (fresh.length && this.enabled) void this.deliver(fresh).catch((e) => this.log.warn(String(e)));
     });

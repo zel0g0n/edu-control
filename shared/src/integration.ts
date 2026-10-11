@@ -2,6 +2,7 @@
 // NVR loyihasi muassasa kaliti bilan o'quvchilar ro'yxati va dars jadvalini oladi,
 // sinf kamerasidan olingan dars davomatini yuboradi. Hujjat: INTEGRATSIYA.md
 
+import { classIdsOf, inClass, notifyTargets } from "./membership";
 import { isPresent } from "./attendance";
 import { CommandError } from "./patch";
 import { hm, isoWeekday } from "./dates";
@@ -18,7 +19,8 @@ const MAX_SNAPSHOT = 80_000;
 export interface NvrRoster {
   institution: { id: string; name: string };
   classes: { id: string; name: string }[];
-  students: { id: string; name: string; classId: string; faceConsent: boolean }[];
+  /** classId: asosiy guruh; classIds: barcha guruhlari (o'quv markazi). */
+  students: { id: string; name: string; classId: string; classIds: string[]; faceConsent: boolean }[];
 }
 
 export interface NvrLesson {
@@ -64,8 +66,8 @@ export function nvrRoster(db: Database, inst: Institution): NvrRoster {
     institution: { id: inst.id, name: inst.name },
     classes: classes.map((c) => ({ id: c.id, name: c.name })),
     students: db.students
-      .filter((s) => !s.archived && ids.has(s.classId))
-      .map((s) => ({ id: s.id, name: s.name, classId: s.classId, faceConsent: s.parentConsent })),
+      .filter((s) => !s.archived && classIdsOf(s).some((c) => ids.has(c)))
+      .map((s) => ({ id: s.id, name: s.name, classId: s.classId, classIds: classIdsOf(s), faceConsent: s.parentConsent })),
   };
 }
 
@@ -101,7 +103,7 @@ export function nvrAttendancePatch(db: Database, inst: Institution, input: NvrAt
   const result: NvrAttendanceResult = { applied: 0, skipped: [] };
   const by = `nvr:${inst.id}`;
   for (const m of input.marks) {
-    const s = db.students.find((x) => x.id === m?.studentId && x.classId === cls.id && !x.archived);
+    const s = db.students.find((x) => x.id === m?.studentId && inClass(x, cls.id) && !x.archived);
     if (!s) {
       result.skipped.push({ studentId: String(m?.studentId ?? ""), reason: "unknownStudent" });
       continue;
@@ -126,7 +128,7 @@ export function nvrAttendancePatch(db: Database, inst: Institution, input: NvrAt
     result.applied++;
     if (prev?.status === m.status) continue;
     const draft = notifyAttendance({ student: s.name, subject: lesson.subject, time: hm(seen), status: m.status, viaFace: true, snapshot: rec.snapshot, studentId: s.id });
-    for (const userId of new Set(s.parentIds)) notes.push({ id: newId("n"), userId, ...draft, time: now, read: false });
+    for (const userId of new Set(notifyTargets(s))) notes.push({ id: newId("n"), userId, ...draft, time: now, read: false });
   }
   return { patch: { upsert: { attendance, notifications: notes } }, result };
 }

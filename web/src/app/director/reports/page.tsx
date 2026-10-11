@@ -36,7 +36,7 @@ export default function DirectorReports() {
   const grades = app.db.grades.filter((g) => g.day >= range.from && g.day <= range.to && g.type !== "term" && g.type !== "year");
   const days = range.from <= range.to ? daysBetween(range.from, range.to).filter((d) => isoWeekday(d) !== 7) : [];
   const trend = attendanceByDay(days, att);
-  const byClass = attendanceByClass(classes, students, att);
+  const byClass = attendanceByClass(classes, students, att, app.db.lessons);
   const bySubject = gradeAverages(grades, (g) => g.subject);
   const dist = [5, 4, 3, 2].map((v) => ({ v, n: grades.filter((g) => g.value === v).length }));
   const months = Array.from({ length: 6 }, (_, i) => addMonths(app.currentMonth(), i - 5));
@@ -69,7 +69,7 @@ export default function DirectorReports() {
       { name: t("Fanlar"), rows: [[t("Fan"), t("Baholar soni"), t("O'rtacha")], ...bySubject.map((x) => [x.key, x.count, x.avg === null ? "" : Number(x.avg.toFixed(2))])] },
       { name: t("O'qituvchilar"), rows: [[t("O'qituvchi"), t("O'tilgan darslar"), t("Davomat olingan"), t("Qo'yilgan baholar")], ...teacherRows.map((x) => [x.u.name, x.held, x.marked, x.grades])] },
       { name: t("To'lovlar"), rows: [[t("Oy"), t("Reja"), t("Yig'ildi"), t("Qoldiq"), t("Qarzdorlar")], ...billing.map((b) => [b.m, b.total, b.paid, b.remaining, b.debtors])] },
-      { name: t("E'tibor"), rows: [[t("O'quvchi"), t("Sinf"), t("Davomat %"), t("O'rtacha")], ...risk.map((x) => [x.s.name, app.schoolClass(x.s.classId)?.name, x.a === null ? "" : Math.round(x.a * 100), x.g === null ? "" : Number(x.g.toFixed(2))])] },
+      { name: t("E'tibor"), rows: [[t("O'quvchi"), t("Sinf"), t("Davomat %"), t("O'rtacha")], ...risk.map((x) => [x.s.name, app.classNamesOf(x.s), x.a === null ? "" : Math.round(x.a * 100), x.g === null ? "" : Number(x.g.toFixed(2))])] },
     ]);
   };
 
@@ -133,7 +133,7 @@ export default function DirectorReports() {
             empty={<Card><EmptyState compact icon={TriangleAlert} title={t("Bunday o'quvchi yo'q")} text={t("Davomati 80% dan yoki o'rtacha bahosi 3.2 dan past o'quvchilar shu yerda chiqadi")} /></Card>}
             columns={[
               { key: "name", header: t("O'quvchi"), cell: (x) => <span className="flex items-center gap-2.5"><Avatar name={x.s.name} size={30} /><span className="font-medium">{x.s.name}</span></span> },
-              { key: "class", header: t("Sinf"), cell: (x) => app.schoolClass(x.s.classId)?.name },
+              { key: "class", header: t("Sinf"), cell: (x) => app.classNamesOf(x.s) },
               { key: "att", header: t("Davomat"), align: "right", cell: (x) => <span className={toneText(x.a !== null && x.a < 0.8 ? "bad" : "slate")}>{fmt.percent(x.a)}</span> },
               { key: "avg", header: t("O'rtacha"), align: "right", cell: (x) => <b className={toneText(avgTone(x.g))}>{x.g === null ? "—" : fmt.number(x.g, 2)}</b> },
             ]} />

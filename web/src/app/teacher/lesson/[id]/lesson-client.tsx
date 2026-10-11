@@ -43,7 +43,7 @@ export function LessonClient() {
         subtitle={`${fmt.weekday(day)}, ${fmt.date(day)} · ${lesson.start}–${lesson.end} · ${t("{room}-xona", { room: lesson.room })}`}
         below={<Segmented value={tab} onChange={setTab} options={[
           { value: "attendance", label: t("Davomat") },
-          { value: "grades", label: t("Baholar") },
+          ...(app.gradesOn(cls?.institutionId) ? [{ value: "grades" as const, label: t("Baholar") }] : []),
           { value: "homework", label: t("Vazifa") },
         ]} />} />
       <PageBody>

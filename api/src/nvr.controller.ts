@@ -6,13 +6,13 @@ import {
   type Institution, type NvrAttendanceInput, type NvrAttendanceResult,
 } from "@edunazorat/shared";
 
+import { LimitsService } from "./limits.service";
 import { StoreService } from "./store.service";
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest();
 
-/** Kalitni taxmin qilishga urinishlarni cheklash: bitta IP dan 10 daqiqada 20 ta xato. */
-const failures = new Map<string, { n: number; until: number }>();
-const WINDOW = 10 * 60_000;
+/** Kalitni taxmin qilishga urinishlarni cheklash: bitta IP dan 10 daqiqada 20 ta xato (hisoblagich bazada, barcha nusxalar uchun). */
+const WINDOW_S = 10 * 60;
 
 /**
  * NVR so'rovlari: "Authorization: Bearer edn_..." (yoki "X-Api-Key").
@@ -20,23 +20,20 @@ const WINDOW = 10 * 60_000;
  */
 @Injectable()
 export class NvrKeyGuard implements CanActivate {
-  constructor(@Inject(StoreService) private readonly store: StoreService) {}
+  constructor(@Inject(StoreService) private readonly store: StoreService, @Inject(LimitsService) private readonly limits: LimitsService) {}
 
-  canActivate(ctx: ExecutionContext): boolean {
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request & { nvrInstitution?: Institution }>();
     const ip = req.ip ?? "?";
-    const f = failures.get(ip);
-    if (f && f.n >= 20 && f.until > Date.now()) throw new CommandError("err.tooMany", {}, 429);
+    if ((await this.limits.peek(`nvrfail:${ip}`)).n >= 20) throw new CommandError("err.tooMany", {}, 429);
     const h = req.headers.authorization;
     const key = h?.startsWith("Bearer ") ? h.slice(7).trim() : String(req.headers["x-api-key"] ?? "").trim();
     const inst = NVR_KEY_PATTERN.test(key) ? this.find(key) : undefined;
     if (!inst) {
-      const cur = f && f.until > Date.now() ? f : { n: 0, until: Date.now() + WINDOW };
-      failures.set(ip, { n: cur.n + 1, until: cur.until });
+      await this.limits.hit(`nvrfail:${ip}`, WINDOW_S);
       throw new CommandError("err.nvrKey", {}, 401);
     }
     if (!inst.active) throw new CommandError("err.institutionBlocked", {}, 403);
-    failures.delete(ip);
     req.nvrInstitution = inst;
     return true;
   }

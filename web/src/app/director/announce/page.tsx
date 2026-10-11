@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Megaphone, Send } from "lucide-react";
 
 import { useRun } from "@/components/providers";
-import { PageBody, PageHeader } from "@/components/shell";
+import { inClass } from "@edunazorat/shared";
+import { PageBody, PageHeader, ReadOnlyNote } from "@/components/shell";
 import { btn, Card, Field, inputCls, Select, textareaCls } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
 import { useT } from "@/lib/i18n/react";
@@ -19,7 +20,7 @@ export default function DirectorAnnounce() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
-  const recipients = app.studentsOfInstitution(inst.id).filter((s) => !classId || s.classId === classId);
+  const recipients = app.studentsOfInstitution(inst.id).filter((s) => !classId || inClass(s, classId));
   const people = new Set(recipients.flatMap((s) => [...s.parentIds, ...(s.userId ? [s.userId] : [])])).size;
 
   const send = async (e: React.FormEvent) => {
@@ -37,8 +38,10 @@ export default function DirectorAnnounce() {
     <>
       <PageHeader title={t("E'lonlar")} subtitle={t("Ota-onalar va o'quvchilarga bildirishnoma")} />
       <PageBody className="max-w-2xl">
+        {!app.canManage && <ReadOnlyNote />}
         <Card className="p-5">
-          <form onSubmit={send} className="flex flex-col gap-4">
+          <form onSubmit={send}>
+           <fieldset disabled={!app.canManage} className="flex min-w-0 flex-col gap-4">
             <Field label={t("Kimga")}>
               <Select value={classId} onChange={setClassId}>
                 <option value="">{t("Butun muassasa")}</option>
@@ -51,6 +54,7 @@ export default function DirectorAnnounce() {
               <span className="flex items-center gap-1.5 text-sm text-muted"><Megaphone size={16} aria-hidden />{t("{n} kishi oladi", { n: people })}</span>
               <button type="submit" className={btn.primary} disabled={busy || !title.trim() || !body.trim()}><Send size={17} aria-hidden /> {t("Yuborish")}</button>
             </div>
+           </fieldset>
           </form>
         </Card>
       </PageBody>

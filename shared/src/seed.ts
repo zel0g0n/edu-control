@@ -1,6 +1,11 @@
+import { uzPublicHolidays } from "./holidays";
 import { arrivalStatus } from "./attendance";
 import { addDays, atTime, dayKey, hm, isoWeekday, monthKey } from "./dates";
 import { notifyAttendance, notifyGrade, notifyHomework, notifyPayment, type NotificationDraft } from "./notify";
+import { assignMissingReceiptIds } from "./receipt";
+import { ensureStudentAccounts } from "./credentials";
+import { inClass } from "./membership";
+import { tuitionFor } from "./tuition";
 import {
   DEFAULT_SETTINGS,
   emptyDatabase,
@@ -8,19 +13,27 @@ import {
   type Database,
   type GradeType,
   type Invoice,
+  type Lead,
   type Lesson,
   type PaymentMethod,
 } from "./types";
 
 export const DEMO_OTP = "1111";
+/** Demo foydalanuvchilarning paroli (faqat demo/sinov ma'lumotlari uchun). */
+export const DEMO_PASSWORD = "246810";
 
-export const DEMO_ACCOUNTS: { phone: string; label: string }[] = [
-  { phone: "998905555555", label: "demo.parent" },
-  { phone: "998903333333", label: "demo.teacher" },
-  { phone: "998904444444", label: "demo.student" },
-  { phone: "998901111111", label: "demo.director" },
-  { phone: "998902222222", label: "demo.directorCenter" },
-  { phone: "998900000000", label: "demo.superAdmin" },
+/** login: kirishda yoziladigan (o'quvchida ism.familiya, kattalarda telefon). */
+export const DEMO_ACCOUNTS: { phone: string; login: string; label: string }[] = [
+  { phone: "998905555555", login: "905555555", label: "demo.parent" },
+  { phone: "998903333333", login: "903333333", label: "demo.teacher" },
+  { phone: "998904444444", login: "kamila.karimova", label: "demo.student" },
+  { phone: "998907777777", login: "907777777", label: "demo.admin" },
+  { phone: "998901111111", login: "901111111", label: "demo.director" },
+  { phone: "998902222222", login: "902222222", label: "demo.directorCenter" },
+  { phone: "998908888888", login: "908888888", label: "demo.adminCenter" },
+  { phone: "998908888889", login: "908888889", label: "demo.adminBranch" },
+  { phone: "998935550199", login: "rustam.qodirov", label: "demo.studentAdult" },
+  { phone: "998900000000", login: "900000000", label: "demo.superAdmin" },
 ];
 
 function mulberry32(seed: number) {
@@ -68,6 +81,8 @@ export function seedDatabase(now: number): Database {
   user({ id: "u_super", name: "Alisher (super admin)", phone: "998900000000", role: "superAdmin" });
   user({ id: "u_dir", name: "Nodira Yusupova", phone: "998901111111", role: "director", institutionId: "inst_school" });
   user({ id: "u_dir2", name: "Bekzod Aliyev", phone: "998902222222", role: "director", institutionId: "inst_center" });
+  user({ id: "u_adm", name: "Shahlo Mirzayeva", phone: "998907777777", role: "admin", institutionId: "inst_school" });
+  user({ id: "u_adm2", name: "Otabek Sobirov", phone: "998908888888", role: "admin", institutionId: "inst_center" });
   user({ id: "u_parent", name: "Feruza Karimova", phone: "998905555555", role: "parent", institutionId: "inst_school", childIds: ["s_a0", "s_b0"] });
 
   const teachers: [string, string, string, string[]][] = [
@@ -85,13 +100,16 @@ export function seedDatabase(now: number): Database {
   db.classes.push(
     { id: "c_5a", institutionId: "inst_school", name: "5-A", homeroomTeacherId: "t_uzb", monthlyFee: 3_500_000 },
     { id: "c_7b", institutionId: "inst_school", name: "7-B", homeroomTeacherId: "t_math", monthlyFee: 3_500_000 },
-    { id: "c_ielts", institutionId: "inst_center", name: "IELTS B2 (kechki)", homeroomTeacherId: "t_ielts", monthlyFee: 900_000 },
+    // O'quv markazi: oylik (sababli qoldirilgan darsga chegirma) va darsbay to'lov
+    { id: "c_ielts", institutionId: "inst_center", name: "IELTS B2 (kechki)", homeroomTeacherId: "t_ielts", monthlyFee: 900_000, absenceRefund: "excused" },
+    { id: "c_sat", institutionId: "inst_center", name: "SAT Math (toq kunlar)", homeroomTeacherId: "t_sat", monthlyFee: 0, billingMode: "perLesson", lessonPrice: 140_000, absenceRefund: "all" },
   );
 
   const roster: [string, string, string, string[]][] = [
     ["c_5a", "inst_school", "s_a", ["Aziz Karimov", "Madina Tursunova", "Sherzod Olimov", "Zarina Abdullayeva", "Javohir Rashidov", "Sevara Qosimova", "Bobur Hakimov", "Nilufar Saidova"]],
     ["c_7b", "inst_school", "s_b", ["Kamila Karimova", "Doniyor Ismoilov", "Laylo Yoqubova", "Temur Salimov", "Mohira Jo'rayeva", "Ulugbek Nurmatov", "Shahzoda Fayzullayeva", "Otabek Usmonov"]],
     ["c_ielts", "inst_center", "s_c", ["Diyora Xolmatova", "Islom Sobirov", "Farangiz Mahmudova", "Sanjar Ibragimov", "Ruxshona Alimova", "Akmal Yusupov"]],
+    ["c_sat", "inst_center", "s_d", ["Behruz Karimov", "Malika Yo'ldosheva", "Jamshid Tursunov"]],
   ];
   let phoneSeq = 0;
   for (const [classId, inst, prefix, names] of roster) {
@@ -108,8 +126,17 @@ export function seedDatabase(now: number): Database {
       db.students.push({ id: sid, institutionId: inst, name, classId, parentIds, archived: false, parentConsent: consent, faceTemplates: [] });
     });
   }
+  // O'quv markazi: ikki guruhda o'qiydiganlar va katta yoshli (ota-onasiz) tinglovchi
+  for (const sid of ["s_c0", "s_c3"]) {
+    const st = db.students.find((s) => s.id === sid)!;
+    st.extraClassIds = ["c_sat"];
+  }
+  db.students.push({ id: "s_d3", institutionId: "inst_center", name: "Rustam Qodirov", classId: "c_ielts", extraClassIds: ["c_sat"], adult: true, parentIds: [], archived: false, parentConsent: true, faceTemplates: [] });
+  // Katta yoshli tinglovchi: o'z telefoni bilan kiradi (to'lov va yozishma o'zida)
+  user({ id: "u_adult", name: "Rustam Qodirov", phone: "998935550199", role: "student", institutionId: "inst_center", studentId: "s_d3", login: "rustam.qodirov" });
+  db.students.find((s) => s.id === "s_d3")!.userId = "u_adult";
   // Demo o'quvchi akkaunti: Kamila
-  user({ id: "u_student", name: "Kamila Karimova", phone: "998904444444", role: "student", institutionId: "inst_school", studentId: "s_b0" });
+  user({ id: "u_student", name: "Kamila Karimova", phone: "998904444444", role: "student", institutionId: "inst_school", studentId: "s_b0", login: "kamila.karimova" });
   db.students.find((s) => s.id === "s_b0")!.userId = "u_student";
 
   // Dars jadvali
@@ -147,11 +174,11 @@ export function seedDatabase(now: number): Database {
     }
   }
   for (const d of [1, 3, 5]) db.lessons.push({ id: id("l"), classId: "c_ielts", subject: "IELTS", teacherId: "t_ielts", weekday: d, start: "17:00", end: "18:30", room: "B-4" });
-  for (const d of [2, 4]) db.lessons.push({ id: id("l"), classId: "c_ielts", subject: "SAT Math", teacherId: "t_sat", weekday: d, start: "17:00", end: "18:30", room: "B-2" });
+  for (const d of [2, 4]) db.lessons.push({ id: id("l"), classId: "c_sat", subject: "SAT Math", teacherId: "t_sat", weekday: d, start: "17:00", end: "18:30", room: "B-2" });
 
   const lessonsOn = (classId: string, wd: number): Lesson[] =>
     db.lessons.filter((l) => l.classId === classId && l.weekday === wd).sort((a, b) => a.start.localeCompare(b.start));
-  const studentsOf = (classId: string) => db.students.filter((s) => s.classId === classId);
+  const studentsOf = (classId: string) => db.students.filter((s) => inClass(s, classId));
 
   // O'tgan 3 hafta: dars bo'yicha davomat va baholar.
   const comments = ["Faol qatnashdi", "Uy vazifasi to'liq emas", "Yaxshi javob berdi", undefined, undefined, undefined, undefined];
@@ -229,12 +256,14 @@ export function seedDatabase(now: number): Database {
   const nowDate = new Date(now);
   const methods: PaymentMethod[] = ["cash", "card", "click", "payme"];
   for (const s of db.students) {
-    const cls = db.classes.find((c) => c.id === s.classId)!;
     const settings = db.institutions.find((i) => i.id === s.institutionId)!.settings;
     for (let m = 2; m >= 0; m--) {
       const first = new Date(nowDate.getFullYear(), nowDate.getMonth() - m, 1);
+      // Guruh to'lov turi va qoldirilgan darslar (o'quv markazi) hisobga olinadi
+      const tu = tuitionFor(s, monthKey(first), { classes: db.classes, lessons: db.lessons, attendance: db.attendance });
+      const simple = tu.lines.length === 1 && tu.lines[0].kind === "fee" && !tu.lines[0].partial && !db.classes.find((c) => c.id === tu.lines[0].classId)?.billingMode;
       const inv: Invoice = {
-        id: id("inv"), studentId: s.id, month: monthKey(first), amount: cls.monthlyFee,
+        id: id("inv"), studentId: s.id, month: monthKey(first), amount: tu.amount, ...(simple ? {} : { lines: tu.lines }),
         dueDay: dayKey(new Date(first.getFullYear(), first.getMonth(), settings.paymentDueDay)), payments: [],
       };
       const r = rnd();
@@ -264,5 +293,34 @@ export function seedDatabase(now: number): Database {
   if (aziz5a) {
     notify("u_parent", notifyAttendance({ student: "Aziz Karimov", subject: db.lessons.find((l) => l.id === aziz5a.lessonId)!.subject, time: hm(aziz5a.markedAt), status: aziz5a.status, viaFace: false, studentId: "s_a0" }), aziz5a.markedAt);
   }
+  // O'quv markazi: filiallar, o'qituvchi haqi va lidlar
+  const center = db.institutions.find((i) => i.id === "inst_center")!;
+  center.settings = { ...center.settings, branches: [{ id: "br_chil", name: "Chilonzor", address: "Chilonzor, 9-kvartal" }, { id: "br_yun", name: "Yunusobod", address: "Yunusobod, 4-mavze" }] };
+  db.classes.find((c) => c.id === "c_ielts")!.branchId = "br_chil";
+  db.classes.find((c) => c.id === "c_sat")!.branchId = "br_yun";
+  db.users.find((u) => u.id === "t_ielts")!.pay = { mode: "percent", value: 40 };
+  db.users.find((u) => u.id === "t_sat")!.pay = { mode: "perLesson", value: 60_000 };
+  // Kelgusi davlat bayramlari (dam olish kunlari)
+  const y = Number(today.slice(0, 4));
+  center.settings.holidays = [...uzPublicHolidays(y), ...uzPublicHolidays(y + 1)]
+    .filter((h) => h.to >= today && h.from <= `${y + 1}${today.slice(4)}`)
+    .map((h) => ({ ...h, id: id("hd") }));
+  // Faqat Yunusobod filialini boshqaradigan administrator
+  db.users.push({ id: "u_adm_yun", name: "Nodira Qosimova", phone: "998908888889", role: "admin", institutionId: "inst_center", subjects: [], childIds: [], active: true, branchIds: ["br_yun"] });
+  const lead = (name: string, phone: string, interest: string, source: Lead["source"], status: Lead["status"], daysAgo: number, extra: Partial<Lead> = {}) =>
+    db.leads.push({ id: id("ld"), institutionId: "inst_center", name, phone, interest, source, status, createdAt: now - daysAgo * 86400000, updatedAt: now - Math.max(0, daysAgo - 1) * 86400000, createdBy: "u_adm2", ...extra });
+  lead("Sardor Aliyev", "998935550101", "IELTS", "instagram", "new", 0);
+  lead("Nigora Rasulova", "998935550102", "SAT Math", "telegram", "new", 1, { note: "Kechki guruh so'radi" });
+  lead("Botir Jalilov", "998935550103", "IELTS", "referral", "contacted", 3, { note: "Shanba kuni qayta qo'ng'iroq" });
+  lead("Zilola Ergasheva", "998935550104", "IELTS", "instagram", "trial", 5, { trialClassId: "c_ielts", trialDay: addDays(today, 2) });
+  lead("Kamron Usmonov", "998935550105", "SAT Math", "outdoor", "trial", 8, { trialClassId: "c_sat", trialDay: addDays(today, -2), trialCame: true });
+  lead("Lola Hamidova", "998935550106", "IELTS", "walkin", "lost", 12, { lostReason: "Narx qimmat" });
+
+  // Har o'quvchining akkaunti (login ism.familiya)
+  const acc = ensureStudentAccounts(db, (p) => id(p));
+  for (const u of acc.users) { const i = db.users.findIndex((x) => x.id === u.id); if (i >= 0) db.users[i] = u; else db.users.push(u); }
+  for (const s of acc.students) Object.assign(db.students.find((x) => x.id === s.id)!, { userId: s.userId });
+  // Kvitansiya ID: har ishga tushirishda bir xil (demo raqamlarini yodda saqlash oson)
+  for (const s of assignMissingReceiptIds(db, mulberry32(104523))) Object.assign(db.students.find((x) => x.id === s.id)!, { receiptId: s.receiptId });
   return db;
 }

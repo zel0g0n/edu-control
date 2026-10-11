@@ -1,6 +1,8 @@
 // Kim nimani ko'radi. Server bootstrap va real vaqt yangilanishlarini shu
 // qoidalar bilan filtrlaydi: ota-ona faqat o'z farzandini, o'qituvchi faqat
 // o'z sinflarini, direktor faqat o'z muassasasini ko'radi.
+import { branchLimit } from "./branches";
+import { classIdsOf } from "./membership";
 import type { CollectionName, Patch } from "./patch";
 import type { AppNotification, AppUser, Database, Student } from "./types";
 
@@ -14,7 +16,7 @@ const keep = <T>(x: T) => x;
 const when = <T>(ok: (x: T) => boolean, map: (x: T) => T = keep) => (x: T) => (ok(x) ? map(x) : null);
 
 /** Begona foydalanuvchining telefonini yashirish. */
-const publicUser = (u: AppUser): AppUser => ({ ...u, phone: "", childIds: [], studentId: undefined });
+const publicUser = (u: AppUser): AppUser => ({ ...u, phone: "", childIds: [], studentId: undefined, pay: undefined, login: undefined });
 /** Yuz namunalari faqat davomat oladiganlarga kerak. */
 const noFace = (s: Student): Student => ({ ...s, faceTemplates: [], facePhoto: undefined });
 
@@ -25,24 +27,33 @@ export function scopeFor(db: Database, user: AppUser): Scope {
   if (user.role === "superAdmin") {
     return {
       institutions: keep,
-      users: when((u) => u.id === user.id || u.role === "director"),
+      users: when((u) => u.id === user.id || u.role === "director" || u.role === "admin"),
       classes: keep,
       students: (s) => noFace({ ...s, parentIds: [] }),
       lessons: none, terms: none, grades: none, attendance: none, homeworks: none, submissions: none,
       invoices: none, threads: none, messages: none,
       notifications: mine,
+      leads: none,
     };
   }
 
-  if (user.role === "director") {
-    const studentIds = new Set(db.students.filter((s) => s.institutionId === inst).map((s) => s.id));
-    const classIds = new Set(db.classes.filter((c) => c.institutionId === inst).map((c) => c.id));
+  if (user.role === "director" || user.role === "admin") {
+    // Filial administratori: faqat o'z filiali guruhlari va o'quvchilari
+    const limit = branchLimit(db, user);
+    const studentIds = new Set(db.students.filter((s) => s.institutionId === inst && (!limit || limit.studentOk(s))).map((s) => s.id));
+    const classIds = new Set(db.classes.filter((c) => c.institutionId === inst && (!limit || limit.classOk(c))).map((c) => c.id));
     const hwIds = new Set(db.homeworks.filter((h) => classIds.has(h.classId)).map((h) => h.id));
     return {
       institutions: when((i) => i.id === inst),
-      users: when((u) => u.institutionId === inst || u.childIds.some((c) => studentIds.has(c))),
-      classes: when((c) => c.institutionId === inst),
-      students: when((s) => s.institutionId === inst),
+      users: (u) => {
+        if (u.childIds.some((c) => studentIds.has(c))) return limit ? { ...u, childIds: u.childIds.filter((c) => studentIds.has(c)) } : u;
+        if (u.institutionId !== inst) return null;
+        // Boshqa filial o'quvchisining akkaunti ko'rinmaydi
+        if (limit && u.role === "student" && !(u.studentId && studentIds.has(u.studentId))) return null;
+        return u;
+      },
+      classes: when((c) => classIds.has(c.id)),
+      students: when((s) => studentIds.has(s.id)),
       lessons: when((l) => classIds.has(l.classId)),
       terms: when((t) => t.institutionId === inst),
       grades: when((g) => studentIds.has(g.studentId)),
@@ -53,6 +64,7 @@ export function scopeFor(db: Database, user: AppUser): Scope {
       // Direktor shaxsiy yozishmalarni o'qimaydi.
       threads: none, messages: none,
       notifications: mine,
+      leads: when((l) => l.institutionId === inst),
     };
   }
 
@@ -61,9 +73,10 @@ export function scopeFor(db: Database, user: AppUser): Scope {
       ...db.lessons.filter((l) => l.teacherId === user.id).map((l) => l.classId),
       ...db.classes.filter((c) => c.homeroomTeacherId === user.id).map((c) => c.id),
     ]);
-    const students = db.students.filter((s) => classIds.has(s.classId));
+    const students = db.students.filter((s) => classIdsOf(s).some((c) => classIds.has(c)));
     const studentIds = new Set(students.map((s) => s.id));
-    const parentIds = new Set(students.flatMap((s) => s.parentIds));
+    // Ota-onalar va katta yoshli o'quvchilarning o'z akkauntlari (yozishma uchun)
+    const parentIds = new Set(students.flatMap((s) => (s.adult && s.userId ? [...s.parentIds, s.userId] : s.parentIds)));
     const hwIds = new Set(db.homeworks.filter((h) => classIds.has(h.classId)).map((h) => h.id));
     const threadIds = new Set(db.threads.filter((t) => t.teacherId === user.id).map((t) => t.id));
     return {
@@ -81,13 +94,14 @@ export function scopeFor(db: Database, user: AppUser): Scope {
       threads: when((t) => t.teacherId === user.id),
       messages: when((m) => threadIds.has(m.threadId)),
       notifications: mine,
+      leads: none,
     };
   }
 
   // Ota-ona va o'quvchi: faqat o'z farzandi / o'zi.
   const childIds = new Set(user.role === "student" ? (user.studentId ? [user.studentId] : []) : user.childIds);
   const children = db.students.filter((s) => childIds.has(s.id));
-  const classIds = new Set(children.map((s) => s.classId));
+  const classIds = new Set(children.flatMap((s) => classIdsOf(s)));
   const instIds = new Set(children.map((s) => s.institutionId));
   const teacherIds = new Set([
     ...db.lessons.filter((l) => classIds.has(l.classId)).map((l) => l.teacherId),
@@ -95,7 +109,10 @@ export function scopeFor(db: Database, user: AppUser): Scope {
   ]);
   const hwIds = new Set(db.homeworks.filter((h) => classIds.has(h.classId)).map((h) => h.id));
   const isParent = user.role === "parent";
-  const threadIds = new Set(db.threads.filter((t) => isParent && t.parentId === user.id).map((t) => t.id));
+  // Katta yoshli o'quvchi (o'quv markazi) o'z to'lovlarini ham ko'radi: ota-onasi yo'q
+  const adultSelf = !isParent && children.some((s) => s.adult);
+  // Katta yoshli o'quvchi o'qituvchi bilan o'zi yozishadi
+  const threadIds = new Set(db.threads.filter((t) => (isParent || adultSelf) && t.parentId === user.id).map((t) => t.id));
   return {
     institutions: when((i) => instIds.has(i.id), (i) => ({ ...i, settings: { ...i.settings, matchThreshold: 0, reviewThreshold: 0, nvr: undefined } })),
     users: (u) => (u.id === user.id ? u : teacherIds.has(u.id) ? publicUser(u) : null),
@@ -107,16 +124,17 @@ export function scopeFor(db: Database, user: AppUser): Scope {
     attendance: when((a) => childIds.has(a.studentId), (a) => ({ ...a, matchScore: undefined })),
     homeworks: when((h) => classIds.has(h.classId)),
     submissions: when((s) => hwIds.has(s.homeworkId) && childIds.has(s.studentId)),
-    invoices: isParent ? when((i) => childIds.has(i.studentId)) : none,
+    invoices: isParent || adultSelf ? when((i) => childIds.has(i.studentId)) : none,
     threads: when((t) => threadIds.has(t.id)),
     messages: when((m) => threadIds.has(m.threadId)),
     notifications: mine,
+    leads: none,
   };
 }
 
 const COLLECTIONS: CollectionName[] = [
   "institutions", "users", "classes", "students", "lessons", "terms", "grades", "attendance",
-  "homeworks", "submissions", "invoices", "threads", "messages", "notifications",
+  "homeworks", "submissions", "invoices", "threads", "messages", "notifications", "leads",
 ];
 
 function filterList<K extends CollectionName>(scope: Scope, name: K, list: Item<K>[]): Item<K>[] {
@@ -161,5 +179,5 @@ export function isEmptyPatch(p: Patch): boolean {
  */
 export const STRUCTURAL_COMMANDS: readonly string[] = [
   "lesson.save", "lesson.delete", "class.save", "class.delete", "student.save", "student.archive",
-  "teacher.save", "teacher.setActive", "institution.save", "institution.setActive", "settings.save", "term.save", "nvr.configure",
+  "teacher.save", "teacher.setActive", "admin.save", "institution.save", "institution.setActive", "settings.save", "term.save", "nvr.configure",
 ];

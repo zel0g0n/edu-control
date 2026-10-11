@@ -5,7 +5,7 @@ kamera bilan davomat ham ishlaydi (Vercel HTTPS beradi). Kompyuteringiz yoqiq tu
 
 **Bu demo rejim:** server yo'q, ma'lumotlar har telefonning o'z brauzerida saqlanadi.
 O'qituvchi telefonida qilingan davomat boshqa telefonda ko'rinmaydi. Vercel faqat sayt kodini
-beradi, unga shaxsiy ma'lumot yuborilmaydi. Kirish kodi har doim **1111**.
+beradi, unga shaxsiy ma'lumot yuborilmaydi. Demo parol **246810** (SMS kod bilan kirsangiz: **1111**).
 
 Ketadigan vaqt: birinchi marta ~30-40 daqiqa. Keyingi yangilashlar 1 daqiqa.
 
@@ -96,7 +96,7 @@ GitHub sahifasini yangilasangiz, `api`, `shared`, `web` papkalari ko'rinadi.
 ## 5-qadam. Telefonda sinash
 
 1. Telefonda Chrome (iPhone'da Safari) orqali Vercel manzilini oching.
-2. Kirish sahifasida demo hisobni bosing: kod **1111**.
+2. Kirish sahifasida demo hisobni bosing (parol **246810** o'zi qo'yiladi).
 3. Kamera sinovi uchun o'qituvchi hisobi: **Bugun → dars → Kamera** → kameraga ruxsat bering.
 4. Yuz tanish uchun avval o'quvchining yuz namunasi olinadi:
    - ota-ona hisobi: **Farzand profili → Yuz orqali davomat** → **rozilik** (demo'da ba'zilariga allaqachon berilgan);

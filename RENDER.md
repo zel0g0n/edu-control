@@ -78,10 +78,10 @@ O'tkazib yuborsangiz ham bo'ladi: bildirishnomalar faqat sayt ochiq turganda kel
 7. Tekshirish: brauzerda `https://edunazorat-api.onrender.com/health` ni oching:
 
 ```json
-{"ok":true,"users":33,"realtime":0,"push":true}
+{"ok":true,"push":true}
 ```
 
-`users: 33` — demo ma'lumotlar bazaga yozildi.
+Render loglarida "Sinov rejimi: ..." ogohlantirishlari chiqadi: bu sinov serveri uchun normal (SECURITY.md).
 
 ## 5-qadam. Vercel saytni API'ga ulash
 
@@ -98,7 +98,9 @@ O'tkazib yuborsangiz ham bo'ladi: bildirishnomalar faqat sayt ochiq turganda kel
 
 ## 6-qadam. Kirish
 
-Kirish sahifasida raqamni kiriting → **Kod olish**. SMS yuborilmaydi, kod sariq qutida ko'rinadi.
+Kirish sahifasida login (telefon raqami yoki o'quvchi uchun `ism.familiya`) va parolni kiriting.
+Demo foydalanuvchilarning paroli: **246810**. "SMS kod" yorlig'i ham bor: kod sariq qutida ko'rinadi.
+Rollar va parol berish tartibi: `ROLLAR.md`.
 
 | Rol | Raqam |
 |---|---|
@@ -131,6 +133,7 @@ TRUNCATE records, files, push_subscriptions;
 cd C:\edunazorat
 $env:DATABASE_URL="postgresql://...neon.tech/neondb?sslmode=require"
 npm run create-admin -w api -- 998901234567 "Alisher Oromov"
+# Ekranga login va parol chiqadi. Parolni unutsangiz, xuddi shu buyruq yangisini beradi
 Remove-Item Env:DATABASE_URL
 ```
 
@@ -176,6 +179,8 @@ Render oyiga 750 soat beradi: bitta xizmat 24/7 ishlasa ham yetadi.
 
 ## Yangilash
 
+> v0.21 dan keyin: hamma bir marta qayta kiradi (kirish tokenlari endi 15 daqiqalik, eski tokenlar ishlamaydi).
+
 Men yangi versiya yuborganimda: fayllarni ko'chiring va `git add .`, `git commit -m "..."`, `git push`.
 Vercel (sayt) ham, Render (API) ham o'zi qayta yig'iladi. Baza saqlanib qoladi.
 
@@ -187,6 +192,7 @@ Vercel (sayt) ham, Render (API) ham o'zi qayta yig'iladi. Baza saqlanib qoladi.
 | Render log: `JWT_SECRET kamida 32 belgi` | **Environment** → `JWT_SECRET` → **Generate** |
 | Render log: `password authentication failed` yoki `ENOTFOUND` | `DATABASE_URL` noto'g'ri nusxalangan: Neon'dan qayta nusxalang |
 | `/health` ochiladi, sayt "Server bilan aloqa yo'q" deydi | `WEB_ORIGIN` Vercel manziliga aynan teng emas (`https://`, oxirida `/` yo'q). Tuzatib **Save** |
+| Demo parol 246810 bilan kirib bo'lmaydi | Bazada `SEED_DEMO=true` bilan yaratilgan demo ma'lumot bo'lishi kerak; aks holda administrator parol beradi |
 | Saytda kod sariq qutida chiqmaydi, demo kod 1111 ishlaydi | Sayt hali demo rejimda: `NEXT_PUBLIC_API_URL` saqlanmagan yoki **Redeploy** qilinmagan |
 | Vercel'ning "Preview" manzilidan ochilsa ishlamaydi | Asosiy (Production) manzildan foydalaning yoki uni ham `WEB_ORIGIN` ga vergul bilan qo'shing |
 | Birinchi ochilish 1 daqiqa kutadi | Server uxlagan: yuqoridagi cron-job.org |

@@ -15,7 +15,7 @@ export function StudentFrame({ title, back, children }: { title: string; back?: 
   const s = app.currentUser?.studentId ? app.student(app.currentUser.studentId) : undefined;
   return (
     <>
-      <PageHeader title={t(title)} back={back} subtitle={s ? `${s.name} · ${app.schoolClass(s.classId)?.name}` : undefined} />
+      <PageHeader title={t(title)} back={back} subtitle={s ? `${s.name} · ${app.classNamesOf(s)}` : undefined} />
       <PageBody>{s ? children(s) : <Card><EmptyState icon={UserRound} title={t("O'quvchi ma'lumoti topilmadi")} /></Card>}</PageBody>
     </>
   );

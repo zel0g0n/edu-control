@@ -92,7 +92,8 @@ export const fmt = {
     return [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(" ");
   },
   initials(name: string): string {
-    const parts = name.trim().split(/\s+/);
+    // Faqat harf bilan boshlanadigan so'zlar ("Xolmatova (ota-ona)" → "X")
+    const parts = name.trim().split(/\s+/).filter((w) => /^\p{L}/u.test(w));
     if (!parts[0]) return "?";
     if (parts.length === 1) return parts[0][0].toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();

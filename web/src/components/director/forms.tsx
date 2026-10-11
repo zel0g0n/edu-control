@@ -3,14 +3,15 @@
 import { useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import {
-  DEFAULT_SLOTS, invoiceRemaining, type AppUser, type Invoice, type Lesson, type PaymentMethod, type SchoolClass, type Student,
+  DEFAULT_SLOTS, invoiceRemaining, type AbsenceRefund, type AppUser, type BillingMode, type Invoice, type Lesson, type PaymentMethod, type SchoolClass, type Student, type TeacherPay,
 } from "@edunazorat/shared";
 
+import { usePriceLabel } from "@/components/invoice-lines";
 import { useApp } from "@/lib/data/store";
 import { fmt, weekdayName } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
 import { useRun } from "../providers";
-import { btn, cx, Field, inputCls, Modal, Select, useConfirm } from "../ui";
+import { btn, Chip, cx, Field, inputCls, Modal, Segmented, Select, useConfirm } from "../ui";
 
 /** Telefon maydoni: +998 prefiksi bilan. */
 export function PhoneInput({ value, onChange, id, placeholder = "90 123 45 67" }: { value: string; onChange: (v: string) => void; id?: string; placeholder?: string }) {
@@ -38,14 +39,25 @@ export function StudentForm({ student, defaultClassId, onClose }: { student?: St
   const [classId, setClassId] = useState(student?.classId ?? defaultClassId ?? classes[0]?.id ?? "");
   const [birthDay, setBirthDay] = useState(student?.birthDay ?? "");
   const [parents, setParents] = useState(existingParents.length ? existingParents.map((p) => ({ name: p.name, phone: p.phone.slice(3) })) : [{ name: "", phone: "" }]);
-  const [studentPhone, setStudentPhone] = useState(studentUser?.active ? studentUser.phone.slice(3) : "");
+  const [studentPhone, setStudentPhone] = useState(studentUser?.phone ? studentUser.phone.slice(3) : "");
   const [busy, setBusy] = useState(false);
+  // O'quv markazi: bir nechta guruh va katta yoshli (ota-onasiz) tinglovchi
+  const center = inst.type === "center";
+  const [extra, setExtra] = useState<string[]>(student?.extraClassIds ?? []);
+  const [adult, setAdult] = useState(!!student?.adult);
+  const priceLabel = usePriceLabel();
+  const toggleGroup = (id: string) => {
+    if (id === classId) return;
+    setExtra(extra.includes(id) ? extra.filter((x) => x !== id) : [...extra, id]);
+  };
 
   const save = async () => {
     setBusy(true);
     const p = await run(() => app.run("student.save", {
       id: student?.id, name, classId, birthDay: birthDay || undefined,
-      parents: parents.filter((x) => x.phone.length).map((x) => ({ name: x.name || t("Ota-ona"), phone: `998${x.phone}` })),
+      extraClassIds: center ? extra.filter((x) => x !== classId) : undefined,
+      adult: center ? adult : undefined,
+      parents: center && adult ? [] : parents.filter((x) => x.phone.length).map((x) => ({ name: x.name || t("Ota-ona"), phone: `998${x.phone}` })),
       studentPhone: studentPhone ? `998${studentPhone}` : undefined,
     }), student ? t("O'quvchi ma'lumotlari saqlandi") : t("O'quvchi qo'shildi"));
     setBusy(false);
@@ -62,8 +74,8 @@ export function StudentForm({ student, defaultClassId, onClose }: { student?: St
         <Field label={t("Familiya va ism")} className="sm:col-span-2">
           <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={80} />
         </Field>
-        <Field label={t("Sinf")}>
-          <Select value={classId} onChange={setClassId}>
+        <Field label={center ? t("Asosiy guruh") : t("Sinf")}>
+          <Select value={classId} onChange={(v) => { setClassId(v); setExtra(extra.filter((x) => x !== v)); }}>
             {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
         </Field>
@@ -72,6 +84,29 @@ export function StudentForm({ student, defaultClassId, onClose }: { student?: St
         </Field>
       </div>
 
+      {center && classes.length > 1 && (
+        <div className="mt-4">
+          <span className="text-[13px] font-semibold text-muted">{t("Qo'shimcha guruhlar")}</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {classes.filter((c) => c.id !== classId).map((c) => (
+              <Chip key={c.id} selected={extra.includes(c.id)} onClick={() => toggleGroup(c.id)}>{c.name} · {priceLabel(c)}</Chip>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-muted">{t("O'quvchi bir nechta guruhda o'qisa belgilang: jadval, davomat va oylik to'lov hammasi bo'yicha hisoblanadi.")}</p>
+        </div>
+      )}
+
+      {center && (
+        <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-line p-3">
+          <input type="checkbox" className="mt-0.5 size-4 accent-[var(--color-primary)]" checked={adult} onChange={(e) => setAdult(e.target.checked)} />
+          <span className="text-sm">
+            <span className="block font-semibold">{t("Katta yoshli tinglovchi")}</span>
+            <span className="block text-muted">{t("Ota-onasi yo'q: baho, davomat va to'lov xabarlari o'ziga boradi.")}</span>
+          </span>
+        </label>
+      )}
+
+      {!(center && adult) && <>
       <div className="mt-5 mb-2 flex items-center justify-between">
         <span className="text-[13px] font-semibold text-muted">{t("Ota-onalar (shu raqam bilan ilovaga kiradi)")}</span>
         {parents.length < 3 && <button type="button" className={btn.ghost} onClick={() => setParents([...parents, { name: "", phone: "" }])}><Plus size={15} aria-hidden /> {t("Qo'shish")}</button>}
@@ -89,8 +124,9 @@ export function StudentForm({ student, defaultClassId, onClose }: { student?: St
         ))}
       </div>
       <p className="mt-1.5 text-xs text-muted">{t("Raqam tizimda bor bo'lsa (masalan, boshqa farzandi uchun), shu akkauntga biriktiriladi.")}</p>
+      </>}
 
-      <Field label={t("O'quvchining o'z raqami (ixtiyoriy: o'quvchi kabineti uchun)")} className="mt-4">
+      <Field label={t("O'quvchi telefoni (ixtiyoriy: SMS bilan kirish uchun)")} className="mt-4">
         <PhoneInput value={studentPhone} onChange={setStudentPhone} />
       </Field>
     </Modal>
@@ -107,6 +143,9 @@ export function TeacherForm({ teacher, onClose }: { teacher?: AppUser; onClose: 
   const [phone, setPhone] = useState(teacher?.phone.slice(3) ?? "");
   const [subjects, setSubjects] = useState<string[]>(teacher?.subjects ?? []);
   const [draft, setDraft] = useState("");
+  // Ish haqi: tushgan puldan foiz, har bir dars uchun yoki oylik
+  const [payMode, setPayMode] = useState<TeacherPay["mode"] | "">(teacher?.pay?.mode ?? "");
+  const [payValue, setPayValue] = useState(teacher?.pay ? String(teacher.pay.value) : "");
   const known = [...new Set(app.db.lessons.map((l) => l.subject).concat(app.teachersOfInstitution(app.myInstitution!.id).flatMap((u) => u.subjects)))].sort();
   const addSubject = (s: string) => {
     const v = s.trim();
@@ -115,7 +154,10 @@ export function TeacherForm({ teacher, onClose }: { teacher?: AppUser; onClose: 
   };
   const save = async () => {
     const all = draft.trim() ? [...subjects, draft.trim()] : subjects;
-    if (await run(() => app.run("teacher.save", { id: teacher?.id, name, phone: `998${phone}`, subjects: all }), t("Saqlandi"))) onClose();
+    if (await run(() => app.run("teacher.save", {
+      id: teacher?.id, name, phone: `998${phone}`, subjects: all,
+      pay: payMode ? { mode: payMode, value: Number(payValue.replace(/[^\d.]/g, "")) || 0 } : null,
+    }), t("Saqlandi"))) onClose();
   };
   return (
     <Modal open onClose={onClose} title={teacher ? t("O'qituvchini tahrirlash") : t("Yangi o'qituvchi")}
@@ -139,6 +181,24 @@ export function TeacherForm({ teacher, onClose }: { teacher?: AppUser; onClose: 
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubject(draft); } }} />
           <datalist id="subjects-list">{known.map((s) => <option key={s} value={s} />)}</datalist>
         </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={t("Ish haqi turi")}>
+            <Select value={payMode} onChange={(v) => setPayMode(v as TeacherPay["mode"] | "")}>
+              <option value="">{t("Ko'rsatilmagan")}</option>
+              <option value="percent">{t("Tushgan puldan foiz")}</option>
+              <option value="perLesson">{t("Har bir dars uchun")}</option>
+              <option value="fixed">{t("Oylik (belgilangan)")}</option>
+            </Select>
+          </Field>
+          {payMode && (
+            <Field label={payMode === "percent" ? t("Foiz (%)") : t("Summa (so'm)")}>
+              <input inputMode="decimal" className={cx(inputCls, "tabular")} value={payMode === "percent" ? payValue : payValue ? Number(payValue).toLocaleString("ru-RU") : ""}
+                onChange={(e) => setPayValue(payMode === "percent" ? e.target.value.replace(/[^\d.]/g, "").slice(0, 5) : e.target.value.replace(/\D/g, ""))}
+                placeholder={payMode === "percent" ? "40" : payMode === "perLesson" ? "60 000" : "4 000 000"} />
+            </Field>
+          )}
+        </div>
+        {payMode && <p className="-mt-1 text-xs text-muted">{t("Faqat direktor va administrator ko'radi. Hisob-kitob: O'qituvchi ulushi bo'limi.")}</p>}
       </div>
     </Modal>
   );
@@ -153,10 +213,30 @@ export function ClassForm({ cls, onClose }: { cls?: SchoolClass; onClose: () => 
   const teachers = app.teachersOfInstitution(app.myInstitution!.id);
   const [name, setName] = useState(cls?.name ?? "");
   const [homeroom, setHomeroom] = useState(cls?.homeroomTeacherId ?? "");
-  const [fee, setFee] = useState(String(cls?.monthlyFee ?? ""));
+  const [fee, setFee] = useState(cls?.monthlyFee ? String(cls.monthlyFee) : "");
+  // O'quv markazi: to'lov turi va qoldirilgan dars chegirmasi
+  const center = app.myInstitution?.type === "center";
+  const [mode, setMode] = useState<BillingMode>(cls?.billingMode ?? "monthly");
+  const [lessonPrice, setLessonPrice] = useState(cls?.lessonPrice ? String(cls.lessonPrice) : "");
+  const [coursePrice, setCoursePrice] = useState(cls?.coursePrice ? String(cls.coursePrice) : "");
+  const [refund, setRefund] = useState<AbsenceRefund>(cls?.absenceRefund ?? "none");
+  const branches = app.myInstitution?.settings.branches ?? [];
+  const [branchId, setBranchId] = useState(cls?.branchId ?? "");
+  const num = (v: string) => Number(v.replace(/\D/g, "")) || 0;
   const save = async () => {
-    if (await run(() => app.run("class.save", { id: cls?.id, name, homeroomTeacherId: homeroom || undefined, monthlyFee: Number(fee.replace(/\D/g, "")) || 0 }), t("Saqlandi"))) onClose();
+    if (await run(() => app.run("class.save", {
+      id: cls?.id, name, homeroomTeacherId: homeroom || undefined,
+      monthlyFee: mode === "monthly" ? num(fee) : 0,
+      billingMode: center ? mode : undefined,
+      lessonPrice: center && mode === "perLesson" ? num(lessonPrice) : undefined,
+      coursePrice: center && mode === "course" ? num(coursePrice) : undefined,
+      absenceRefund: center && mode !== "course" ? refund : undefined,
+      branchId: branchId || undefined,
+    }), t("Saqlandi"))) onClose();
   };
+  const moneyInput = (value: string, set: (v: string) => void, placeholder: string) => (
+    <input inputMode="numeric" className={cx(inputCls, "tabular")} value={value ? Number(value).toLocaleString("ru-RU") : ""} onChange={(e) => set(e.target.value.replace(/\D/g, ""))} placeholder={placeholder} />
+  );
   return (
     <Modal open onClose={onClose} title={cls ? t("Sinfni tahrirlash") : t("Yangi sinf / guruh")}
       footer={<>
@@ -171,9 +251,33 @@ export function ClassForm({ cls, onClose }: { cls?: SchoolClass; onClose: () => 
             {teachers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </Select>
         </Field>
-        <Field label={t("Oylik to'lov (so'm)")}>
-          <input inputMode="numeric" className={cx(inputCls, "tabular")} value={fee ? Number(fee.replace(/\D/g, "")).toLocaleString("ru-RU") : ""} onChange={(e) => setFee(e.target.value.replace(/\D/g, ""))} placeholder="3 500 000" />
-        </Field>
+        {branches.length > 0 && (
+          <Field label={t("Filial")}>
+            <Select value={branchId} onChange={setBranchId}>
+              <option value="">{t("Tanlanmagan")}</option>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          </Field>
+        )}
+        {center && (
+          <Field label={t("To'lov turi")} group>
+            <Segmented value={mode} onChange={setMode} options={[
+              { value: "monthly", label: t("Oylik") }, { value: "perLesson", label: t("Darsbay") }, { value: "course", label: t("Kurs uchun") },
+            ]} />
+          </Field>
+        )}
+        {mode === "monthly" && <Field label={t("Oylik to'lov (so'm)")} hint={center ? t("Oy o'rtasida qo'shilsa yoki chiqsa, o'sha oy dars soniga qarab hisoblanadi") : undefined}>{moneyInput(fee, setFee, "900 000")}</Field>}
+        {mode === "perLesson" && <Field label={t("Bitta dars narxi (so'm)")} hint={t("Oy uchun: dars narxi × jadvaldagi darslar soni")}>{moneyInput(lessonPrice, setLessonPrice, "120 000")}</Field>}
+        {mode === "course" && <Field label={t("Kurs narxi (so'm)")} hint={t("Guruhga qo'shilgan oyda bir marta hisoblanadi")}>{moneyInput(coursePrice, setCoursePrice, "2 500 000")}</Field>}
+        {center && mode !== "course" && (
+          <Field label={t("Qoldirilgan dars uchun")} hint={t("Chegirma keyingi oy hisob-varag'ida avtomatik ayriladi")}>
+            <Select value={refund} onChange={(v) => setRefund(v as AbsenceRefund)}>
+              <option value="none">{t("Chegirma yo'q")}</option>
+              <option value="excused">{t("Faqat sababli qoldirilganiga")}</option>
+              <option value="all">{t("Har qanday qoldirilgan darsga")}</option>
+            </Select>
+          </Field>
+        )}
       </div>
     </Modal>
   );

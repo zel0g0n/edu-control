@@ -1,12 +1,17 @@
 import type {
+  AbsenceRefund,
   Attachment,
+  BillingMode,
   AttendanceSource,
   AttendanceStatus,
   GradeType,
   InstitutionSettings,
   InstitutionType,
+  LeadSource,
+  LeadStatus,
   PaymentMethod,
   SubmissionStatus,
+  TeacherPay,
 } from "./types";
 
 export interface PersonInput {
@@ -41,6 +46,8 @@ export interface CommandMap {
   "submission.submit": { homeworkId: string; text: string; attachments: Attachment[] };
   "submission.review": { id: string; status: Exclude<SubmissionStatus, "submitted">; grade?: number; feedback?: string };
   "invoice.generate": { month: string };
+  /** Qarzdorlarga eslatma: berilgan hisob-varaqlar yoki oyning barcha qarzdorlari. */
+  "payment.remind": { month?: string; invoiceIds?: string[] };
   "invoice.adjust": { id: string; amount: number; note?: string };
   "payment.add": { invoiceId: string; amount: number; method: PaymentMethod };
   /** Faqat demo rejimi: onlayn to'lov muvaffaqiyatli bo'lganini taqlid qiladi. */
@@ -57,13 +64,23 @@ export interface CommandMap {
     classId: string;
     birthDay?: string;
     parents: PersonInput[];
-    /** O'quvchining o'z kirish raqami (ixtiyoriy). */
+    /** O'quv markazi: qo'shimcha guruhlar (asosiy guruh classId). */
+    extraClassIds?: string[];
+    /** O'quv markazi: katta yoshli (ota-onasiz). */
+    adult?: boolean;
+    /** O'quvchining telefoni (ixtiyoriy): SMS bilan kirish uchun. Login baribir ism.familiya. */
     studentPhone?: string;
   };
   "student.archive": { id: string; archived: boolean };
-  "teacher.save": { id?: string; name: string; phone: string; subjects: string[] };
+  "teacher.save": { id?: string; name: string; phone: string; subjects: string[]; pay?: TeacherPay | null };
   "teacher.setActive": { id: string; active: boolean };
-  "class.save": { id?: string; name: string; homeroomTeacherId?: string; monthlyFee: number };
+  "class.save": {
+    id?: string; name: string; homeroomTeacherId?: string; monthlyFee: number;
+    /** O'quv markazi: to'lov turi va qoldirilgan dars chegirmasi. */
+    billingMode?: BillingMode; lessonPrice?: number; coursePrice?: number; absenceRefund?: AbsenceRefund;
+    /** Filial (settings.branches). */
+    branchId?: string;
+  };
   "class.delete": { id: string };
   "lesson.save": { id?: string; classId: string; subject: string; teacherId: string; weekday: number; start: string; end: string; room: string };
   "lesson.delete": { id: string };
@@ -73,6 +90,15 @@ export interface CommandMap {
   "nvr.configure": { enabled: boolean; keyHash?: string; keyPrefix?: string; revoke?: boolean };
   "institution.save": { id?: string; name: string; type: InstitutionType; city: string; director?: PersonInput };
   "institution.setActive": { id: string; active: boolean };
+  /** Administrator: direktor o'z muassasasiga qo'shadi (super admin institutionId bilan). */
+  "admin.save": { id?: string; name: string; phone: string; institutionId?: string; /** Filial(lar)ga cheklash; bo'sh = butun markaz. */ branchIds?: string[] };
+  "admin.setActive": { id: string; active: boolean };
+  /** Lidlar (administrator). */
+  "lead.save": { id?: string; name: string; phone: string; interest: string; source: LeadSource; note?: string };
+  "lead.update": { id: string; status?: LeadStatus; trialClassId?: string | null; trialDay?: string | null; trialCame?: boolean | null; lostReason?: string; note?: string };
+  /** Lid → o'quvchi: telefon ota-onaniki (yoki katta yoshli bo'lsa o'zining). */
+  "lead.convert": { id: string; classId: string; extraClassIds?: string[]; adult?: boolean; parentName?: string };
+  "lead.delete": { id: string };
 }
 
 export type CommandName = keyof CommandMap;
