@@ -30,6 +30,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="uz" className="h-full antialiased" suppressHydrationWarning>
       <head>
+        {/* API bilan ulanishni (DNS + TLS) sahifa kodi yuklanayotganda oldindan ochish: birinchi so'rov ~0,3 s tezroq */}
+        {/* Ikkalasi: oddiy so'rovlar cookie'siz, tokenni yangilash (cookie rejimi) cookie bilan — brauzer ularni alohida ulaydi */}
+        {process.env.NEXT_PUBLIC_API_URL && <>
+          <link rel="preconnect" href={new URL(process.env.NEXT_PUBLIC_API_URL).origin} crossOrigin="anonymous" />
+          <link rel="preconnect" href={new URL(process.env.NEXT_PUBLIC_API_URL).origin} crossOrigin="use-credentials" />
+        </>}
         {/* Mavzu sahifa chizilishidan oldin qo'yiladi (miltillash bo'lmasin) */}
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />

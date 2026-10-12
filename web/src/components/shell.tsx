@@ -166,14 +166,14 @@ export function AppShell({ role, children }: { role: UserRole; children: React.R
   return (
     <div className="min-h-dvh md:flex">
       <aside className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col bg-nav px-3 pt-5 pb-3 text-nav-ink md:flex">
-        <Link href={homeFor(role)} className="mb-1 px-2.5"><Logo light /></Link>
+        <Link href={homeFor(role)} prefetch className="mb-1 px-2.5"><Logo light /></Link>
         {inst && <div className="mb-5 truncate px-2.5 text-xs text-nav-ink/70">{inst.name}</div>}
         {!inst && <div className="mb-5" />}
         <nav className="flex flex-col gap-0.5" aria-label={t("Asosiy menyu")}>
           {nav.map((n) => {
             const active = isActive(n);
             return (
-              <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined}
+              <Link key={n.href} href={n.href} prefetch aria-current={active ? "page" : undefined}
                 className={cx(
                   "relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-[14px] font-medium transition",
                   active ? "bg-nav-2 text-nav-active" : "hover:bg-nav-2/60 hover:text-nav-active",
@@ -209,7 +209,7 @@ export function AppShell({ role, children }: { role: UserRole; children: React.R
       <Modal open={more} onClose={() => setMore(false)} title={t("Bo'limlar")}>
         <div className="grid grid-cols-3 gap-2">
           {secondary.map((n) => (
-            <Link key={n.href} href={n.href} onClick={() => setMore(false)}
+            <Link key={n.href} href={n.href} prefetch onClick={() => setMore(false)}
               className={cx("flex flex-col items-center gap-2 rounded-2xl border p-3 text-center text-[13px] font-medium",
                 isActive(n) ? "border-primary bg-primary-soft text-primary-ink" : "border-line")}>
               <n.icon size={22} aria-hidden />
@@ -224,7 +224,7 @@ export function AppShell({ role, children }: { role: UserRole; children: React.R
 
 function BottomItem({ item: n, active, label }: { item: NavItem; active: boolean; label: string }) {
   return (
-    <Link href={n.href} aria-current={active ? "page" : undefined}
+    <Link href={n.href} prefetch aria-current={active ? "page" : undefined}
       className={cx("flex min-w-0 flex-1 flex-col items-center gap-0.5 py-1 text-[11px]", active ? "font-semibold text-ink" : "text-muted")}>
       <span className={cx("relative flex rounded-full px-4 py-1", active && "bg-primary-soft text-primary-ink")}>
         <n.icon size={21} aria-hidden />
@@ -280,7 +280,7 @@ function NotificationBell() {
   if (!u || u.role === "superAdmin") return null;
   const n = app.unreadCount(u.id);
   return (
-    <Link href={`${homeFor(u.role)}/notifications`} className={cx(btn.icon, "relative")} aria-label={n ? t("Bildirishnomalar: {n} ta yangi", { n }) : t("Bildirishnomalar")}>
+    <Link href={`${homeFor(u.role)}/notifications`} prefetch className={cx(btn.icon, "relative")} aria-label={n ? t("Bildirishnomalar: {n} ta yangi", { n }) : t("Bildirishnomalar")}>
       <Bell size={21} aria-hidden />
       {n > 0 && <span className="tabular absolute top-1 right-0.5 min-w-[18px] rounded-full bg-margin px-1 text-center text-[10px] leading-[18px] font-bold text-white">{n > 99 ? "99+" : n}</span>}
     </Link>

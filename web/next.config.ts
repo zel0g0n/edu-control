@@ -52,6 +52,9 @@ const nextConfig: NextConfig = {
     }];
   },
   experimental: {
+    // Sahifalar dinamik (har so'rovga CSP nonce), lekin ichidagi ma'lumot brauzerdagi store'dan:
+    // server javobi (RSC) faqat sahifa "qobig'i". Shuni 5 daqiqa brauzerda saqlash — qayta o'tish darhol.
+    staleTimes: { dynamic: 300, static: 300 },
     // Mock bosqichda ilova to'liq brauzerda chiziladi (ma'lumotlar localStorage'da),
     // shuning uchun avtomatik "instant navigation" tekshiruvi o'chirilgan.
     // NestJS backend ulanganda serverda chiziladigan sahifalar uchun qayta yoqiladi.
