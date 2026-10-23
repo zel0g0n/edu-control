@@ -12,7 +12,7 @@ import { useRun } from "@/components/providers";
 import { useRouteParam } from "@/components/route-param";
 import { PageBody, PageHeader } from "@/components/shell";
 import {
-  Avatar, btn, Card, DataTable, EmptyState, ListCard, ListRow, Pill, Section, Segmented, useConfirm,
+  Avatar, btn, Card, cx, DataTable, EmptyState, ListCard, ListRow, Pill, Section, Segmented, useConfirm,
 } from "@/components/ui";
 import { InvoiceLines } from "@/components/invoice-lines";
 import { useApp } from "@/lib/data/store";
@@ -64,6 +64,8 @@ export function StudentClient() {
 function Info({ student: s }: { student: Student }) {
   const app = useApp();
   const t = useT();
+  const run = useRun();
+  const { ask, dialog } = useConfirm();
   const parents = app.parentsOfStudent(s.id);
   const account = s.userId ? app.userById(s.userId) : undefined;
   const creds = useCredentialStatus(app.canManage ? [account?.id, ...parents.map((p) => p.id)].filter((x): x is string => !!x) : []);
@@ -83,10 +85,21 @@ function Info({ student: s }: { student: Student }) {
             {s.parentConsent ? <ShieldCheck className="text-ok" size={22} /> : <ShieldOff className="text-muted" size={22} />}
             <div className="flex-1 text-sm">
               <div className="font-semibold">{s.parentConsent ? t("Ota-ona roziligi bor") : t("Ota-ona roziligi yo'q")}</div>
-              <div className="text-muted">{t("Rozilikni ota-ona o'z ilovasida beradi yoki bekor qiladi")}</div>
+              <div className="text-muted">
+                {s.parentConsent
+                  ? (s.consentAt ? `${t("Rozilik berilgan sana")}: ${fmt.dateFull(new Date(s.consentAt).toISOString().slice(0, 10))}` : t("Rozilik berilgan"))
+                  : t("Ota-ona ilovaga kirganda rozilik so'raladi")}
+              </div>
             </div>
             {s.parentConsent && <Pill tone={usableTemplates(s).length ? "ok" : "warn"} icon={ScanFace}>{usableTemplates(s).length ? t("Namuna bor") : needsReenroll(s) ? t("Qayta olish kerak") : t("Namuna yo'q")}</Pill>}
           </Card>
+          {/* Ota-ona murojaati bilan: rozilik bekor qilinadi, namuna va rasmlar o'chadi, keyingi kirishda yana so'raladi */}
+          {s.parentConsent && app.canManage && (
+            <button type="button" className={cx(btn.sm, "mt-2")} onClick={async () => {
+              if (!(await ask(t("Ota-ona murojaati bilan rozilik bekor qilinsinmi? Yuz namunasi va rasmlar o'chiriladi, ota-ona keyingi kirishda yana rozilik so'raladi."), { danger: true, ok: t("Bekor qilish") }))) return;
+              await run(() => app.run("consent.set", { studentId: s.id, consent: false }), t("Rozilik bekor qilindi"));
+            }}>{t("Rozilikni bekor qilish")}</button>
+          )}
         </Section>
       </div>
       <div>
@@ -111,6 +124,7 @@ function Info({ student: s }: { student: Student }) {
           </Card>
         </Section>
       </div>
+      {dialog}
     </div>
   );
 }

@@ -36,6 +36,10 @@ export interface Config {
   mfaKey?: Buffer;
   /** So'rov cheklovlarini kengaytirish (faqat testlar: 100). */
   rateLimitScale: number;
+  /** Z_AMS admin serveridagi tekshiruv manzili: https://.../api/v1/edu/verify. Bo'lmasa Z_AMS ulanishi o'chiq. */
+  zamsVerifyUrl?: string;
+  /** Z_AMS admin serveridagi AMS_EDU_SERVICE_KEY bilan bir xil. */
+  zamsServiceKey?: string;
 }
 
 /** Panelga nusxalashda tez-tez qo'shilib ketadigan "NOM=", qo'shtirnoq va bo'shliqlarni olib tashlaydi. */
@@ -73,6 +77,8 @@ export function productionProblems(c: Config): string[] {
   if (c.rateLimitScale !== 1) p.push("RATE_LIMIT_SCALE faqat testlar uchun");
   if (!c.requireStaff2fa) p.push("REQUIRE_STAFF_2FA o'chirilgan: rahbariyat uchun ikki bosqichli kirish majburiy bo'lsin");
   if (!c.mfaKey || c.mfaKey.length !== 32) p.push("MFA_KEY (32 bayt, base64) kerak: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"");
+  if (!!c.zamsVerifyUrl !== !!c.zamsServiceKey) p.push("ZAMS_VERIFY_URL va ZAMS_SERVICE_KEY ikkalasi birga berilsin");
+  if (c.zamsVerifyUrl && !c.zamsVerifyUrl.startsWith("https://")) p.push("ZAMS_VERIFY_URL https:// bilan boshlansin");
   if (!c.authCookie) p.push("AUTH_COOKIE=true kerak (refresh token httpOnly cookie'da; sayt va API bitta domen ostida)");
   return p;
 }
@@ -117,6 +123,8 @@ function buildConfig(env: NodeJS.ProcessEnv, jwtSecret: string): Config {
     authCookie: bool(env.AUTH_COOKIE, false),
     requireStaff2fa: bool(env.REQUIRE_STAFF_2FA, env.APP_ENV === "production"),
     mfaKey: env.MFA_KEY ? Buffer.from(env.MFA_KEY, "base64") : undefined,
+    zamsVerifyUrl: cleanKey(env.ZAMS_VERIFY_URL, "ZAMS_VERIFY_URL"),
+    zamsServiceKey: cleanKey(env.ZAMS_SERVICE_KEY, "ZAMS_SERVICE_KEY"),
   };
 }
 

@@ -9,6 +9,8 @@ import { LimitsService } from "../limits.service";
 import { loadConfig } from "../config";
 import { connect, type Sql } from "../db/sql";
 import { StoreService } from "../store.service";
+import { ZamsVerifyService } from "../zams.controller";
+import { migrate, schemaVersion } from "../db/schema";
 
 let app: INestApplication;
 let base = "";
@@ -40,7 +42,7 @@ async function login(phone: string): Promise<string> {
 }
 
 before(async () => {
-  const config = { ...loadConfig({ SEED_DEMO: "true", SMS_DEV_MODE: "true", DATABASE_URL: process.env.TEST_DATABASE_URL ?? "pglite:memory", PAYME_KEY, CLICK_SECRET_KEY: CLICK_KEY, RATE_LIMIT_SCALE: "100" } as NodeJS.ProcessEnv), port: 0 };
+  const config = { ...loadConfig({ SEED_DEMO: "true", SMS_DEV_MODE: "true", DATABASE_URL: process.env.TEST_DATABASE_URL ?? "pglite:memory", PAYME_KEY, CLICK_SECRET_KEY: CLICK_KEY, RATE_LIMIT_SCALE: "100", ZAMS_VERIFY_URL: "https://zams.test/api/v1/edu/verify", ZAMS_SERVICE_KEY: "svc-key" } as NodeJS.ProcessEnv), port: 0 };
   sql = await connect(config.databaseUrl);
   app = await createApp(config, sql, ["error"]);
   await app.listen(0, "127.0.0.1");
@@ -56,11 +58,11 @@ after(async () => {
 describe("kirish", () => {
   it("noto'g'ri kod, qayta so'rash cheklovi, to'g'ri kod", async () => {
     const r = await call<{ devCode: string }>("/auth/request-code", { phone: "+998 90 222 22 22" });
-    assert.match(r.data.devCode, /^\d{4}$/);
+    assert.match(r.data.devCode, /^\d{6}$/);
     const again = await call<{ key: string }>("/auth/request-code", { phone: "998902222222" });
     assert.equal(again.status, 429);
     assert.equal(again.data.key, "err.otpWait");
-    const bad = await call<{ key: string }>("/auth/verify-code", { phone: "998902222222", code: r.data.devCode === "0000" ? "1111" : "0000" });
+    const bad = await call<{ key: string }>("/auth/verify-code", { phone: "998902222222", code: r.data.devCode === "000000" ? "111111" : "000000" });
     assert.equal(bad.data.key, "err.otp");
     const ok = await call<{ token: string; userId: string }>("/auth/verify-code", { phone: "998902222222", code: r.data.devCode });
     assert.equal(ok.data.userId, "u_dir2");
@@ -328,6 +330,114 @@ describe("NVR integratsiyasi", () => {
   it("kalit bekor qilinsa ishlamaydi", async () => {
     assert.equal((await call("/commands/nvr.configure", { enabled: false, revoke: true }, director)).status, 200);
     assert.equal((await nvr("/ping")).status, 401);
+  });
+});
+
+describe("Z_AMS ulanishi", () => {
+  const edn = "edn_" + "cd34".repeat(12);
+  const zedu = "zedu_" + "x".repeat(40);
+  let director = "";
+  /** Z_AMS admin serverining o'rnini bosuvchi: maktab -> holat */
+  const zams = { allowed: true, school: 12, up: true, calls: 0, lastKey: "" };
+  const zcall = <T = unknown>(path: string, body?: unknown, key = zedu, e = edn) => call<T>(`/integrations/zams/v1${path}`, body, e, { "X-Zams-Key": key });
+
+  before(async () => {
+    director = await login("998907777777");
+    const keyHash = createHash("sha256").update(edn).digest("hex");
+    assert.equal((await call("/commands/nvr.configure", { enabled: true, keyHash, keyPrefix: edn.slice(0, 8) }, director)).status, 200);
+    app.get(ZamsVerifyService).fetcher = (async (_url: string, init: { headers: Record<string, string> }) => {
+      zams.calls++;
+      zams.lastKey = init.headers["X-Service-Key"];
+      if (!zams.up) throw new Error("ECONNREFUSED");
+      const body = zams.allowed
+        ? { allowed: true, school_id: zams.school, school_name: "12-maktab", ttl_seconds: 30 }
+        : { allowed: false, reason: "edu_not_enabled", ttl_seconds: 30 };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+  });
+
+  it("ikkala kalit kerak; ruxsat bo'lmasa 403", async () => {
+    assert.equal((await zcall("/ping", undefined, "noto'g'ri")).status, 401);
+    assert.equal((await zcall("/ping", undefined, zedu, "edn_" + "0".repeat(48))).status, 401);
+    zams.allowed = false;
+    const r = await zcall<{ key: string }>("/ping", undefined, "zedu_" + "n".repeat(40));
+    assert.equal(r.status, 403);
+    assert.equal(r.data.key, "err.zamsNotAllowed");
+    zams.allowed = true;
+  });
+
+  it("ping muassasani Z_AMS maktabiga bog'laydi; boshqa maktab kaliti rad etiladi", async () => {
+    const p = await zcall<{ ok: boolean; zams: { schoolId: number } }>("/ping");
+    assert.equal(p.status, 200, JSON.stringify(p.data));
+    assert.equal(p.data.zams.schoolId, 12);
+    assert.equal(zams.lastKey, "svc-key");
+    assert.equal(app.get(StoreService).db.institutions.find((i) => i.id === "inst_school")!.settings.zams?.schoolId, 12);
+    zams.school = 99;
+    assert.equal((await zcall("/ping", undefined, "zedu_" + "o".repeat(40))).status, 403);
+    zams.school = 12;
+  });
+
+  it("ro'yxat va dars natijasi; Z_AMS serveri o'chsa ham kesh bilan ishlaydi", async () => {
+    const db = app.get(StoreService).db;
+    const kids = db.students.filter((s) => s.classId === "c_7b" && !s.archived);
+    const r = await zcall<{ linked: number; created: number; map: Record<string, string> }>("/roster", {
+      students: [...kids.map((k, i) => ({ id: 100 + i, name: k.name, className: "7b" })), { id: 999, name: "Z_AMS Yangi", className: "7-B" }],
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.linked, kids.length);
+    assert.equal(r.data.created, 1);
+    // Kelgusi haftadagi 7-B darsi (hali belgilanmagan)
+    const today = new Date().toISOString().slice(0, 10);
+    let day = "", lesson = undefined as (typeof db.lessons)[number] | undefined;
+    for (let i = 7; i < 14 && !lesson; i++) {
+      day = addDays(today, i);
+      const wd = new Date(day + "T12:00:00").getDay() || 7;
+      lesson = db.lessons.find((l) => l.classId === "c_7b" && l.weekday === wd);
+    }
+    // Kelgusi hafta ruxsat etilmaydi (faqat -7..+1 kun)
+    assert.equal((await zcall("/lesson", { day, start: lesson!.start, classes: [{ className: "7-B", present: [100], absent: [101] }] })).status, 400);
+    // Bugungi kun: 7-B darsi bo'lsa tekshiramiz
+    const wdToday = new Date(today + "T12:00:00").getDay() || 7;
+    const todays = db.lessons.find((l) => l.classId === "c_7b" && l.weekday === wdToday);
+    if (todays) {
+      zams.up = false;                                              // Z_AMS serveri ishlamayapti: kesh yordam beradi
+      const calls = zams.calls;
+      const l = await zcall<{ classes: { lessonId?: string; applied: number }[] }>("/lesson", {
+        day: today, start: todays.start, lessonNo: 1, classes: [{ className: "7-B", present: [999], absent: [] }],
+      });
+      assert.equal(l.status, 200, JSON.stringify(l.data));
+      assert.equal(l.data.classes[0].lessonId, todays.id);
+      assert.equal(zams.calls, calls);                               // keshdan
+      zams.up = true;
+    }
+  });
+
+  it("admin ruxsatni o'chirsa, kesh tugagach rad etiladi", async () => {
+    const svc = app.get(ZamsVerifyService);
+    zams.allowed = false;
+    const fresh = await svc.verify(zedu, Date.now() + 31_000);       // TTL (30 s) o'tdi
+    assert.equal(fresh.allowed, false);
+    zams.allowed = true;
+  });
+});
+
+describe("monitoring va migratsiyalar", () => {
+  it("health baza va yuklanishni tekshiradi", async () => {
+    const r = await call<{ ok: boolean; db: boolean; ready: boolean }>("/health");
+    assert.equal(r.status, 200);
+    assert.deepEqual([r.data.ok, r.data.db, r.data.ready], [true, true, true]);
+  });
+
+  it("versiyali migratsiya bir marta bajariladi", async () => {
+    assert.ok((await schemaVersion(sql)) >= 1);
+    const extra = [{ version: 1, name: "asosiy", sql: [] }, { version: 9001, name: "sinov", sql: ["CREATE TABLE IF NOT EXISTS mig_probe (n integer)", "INSERT INTO mig_probe VALUES (1)"] }];
+    assert.deepEqual(await migrate(sql, extra), [9001]);
+    assert.deepEqual(await migrate(sql, extra), []);                 // ikkinchi marta hech narsa
+    const [c] = await sql.query<{ n: number }>("SELECT count(*)::int AS n FROM mig_probe");
+    assert.equal(Number(c.n), 1);
+    assert.equal(await schemaVersion(sql), 9001);
+    await sql.query("DROP TABLE mig_probe");
+    await sql.query("DELETE FROM schema_migrations WHERE version = 9001");
   });
 });
 
@@ -708,7 +818,7 @@ describe("ikki bosqichli kirish (2FA)", () => {
     const dir = (await call<{ token: string }>("/auth/login", { login: "901111111", password: "246810" })).data.token;
     assert.deepEqual((await call<{ enabled: boolean }>("/auth/mfa/status", undefined, dir)).data, { enabled: false, required: false });
     const setup = await call<{ secret: string; url: string }>("/auth/mfa/setup", {}, dir);
-    assert.match(setup.data.url, /^otpauth:\/\/totp\/EduNazorat/);
+    assert.match(setup.data.url, /^otpauth:\/\/totp\/EduControl/);
     assert.equal((await call("/auth/mfa/enable", { code: "000000" }, dir)).status, 400);
     const en = await call<{ backupCodes: string[] }>("/auth/mfa/enable", { code: await codeNow(setup.data.secret) }, dir);
     assert.equal(en.data.backupCodes.length, 10);

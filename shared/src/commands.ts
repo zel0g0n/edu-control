@@ -57,6 +57,10 @@ export interface CommandMap {
   "notification.read": { id?: string; all?: boolean };
   "announcement.send": { classId?: string; title: string; body: string };
   "consent.set": { studentId: string; consent: boolean };
+  /** Ko'p o'quvchini bir yo'la (Excel/Word/PDF fayldan). Bitta xato qator — hammasi bekor (qator raqami bilan). */
+  "student.import": { students: CommandMap["student.save"][] };
+  /** O'quvchi rasmi (yuz kesimi). null — o'chirish. */
+  "student.photo": { studentId: string; photo: string | null };
   "face.enroll": { studentId: string; templates: number[][]; photo?: string; model?: string };
   "student.save": {
     id?: string;

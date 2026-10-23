@@ -1,6 +1,6 @@
 {
-  "name": "EduNazorat",
-  "short_name": "EduNazorat",
+  "name": "EduControl",
+  "short_name": "EduControl",
   "description": "Xususiy maktab va o'quv markazlari uchun nazorat platformasi",
   "start_url": "/",
   "display": "standalone",

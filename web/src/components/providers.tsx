@@ -9,6 +9,7 @@ import { translate } from "@/lib/i18n";
 import { notificationText } from "@/lib/notif";
 import { enablePush, pushState, showSystemNotification } from "@/lib/push";
 import { MfaSetupScreen } from "./mfa";
+import { ParentConsentGate, consentPending } from "./consent";
 import { ProfileChooser } from "./profiles";
 import { cx } from "./ui";
 
@@ -22,6 +23,10 @@ export function useToast(): ToastFn {
 
 /** Xatoni foydalanuvchi tilidagi matnga aylantirish. */
 export function errorText(e: unknown): string {
+  // Fayldan qo'shishda: "3-qator: <ichki xato o'z parametrlari bilan>"
+  if (e instanceof CommandError && e.key === "err.importRow" && typeof e.params.error === "string") {
+    return translate(store.lang, "err.importRow", { row: e.params.row, error: translate(store.lang, e.params.error, e.params, store.vocab) }, store.vocab);
+  }
   if (e instanceof CommandError) return translate(store.lang, e.key, e.params, store.vocab);
   return translate(store.lang, "err.network");
 }
@@ -108,7 +113,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={show}>
       {/* Rahbariyat 2FA'ni yoqmaguncha ilova ochilmaydi */}
       {/* Bir telefonda bir nechta profil (o'qituvchi va ota-ona): kirishdan keyin tanlash */}
-      {store.mfaSetupNeeded ? <MfaSetupScreen /> : store.profileChoice ? <ProfileChooser /> : children}
+      {/* Ota-ona: farzand rasmi uchun rozilik bermaguncha sahifa ochilmaydi */}
+      {store.mfaSetupNeeded ? <MfaSetupScreen /> : store.profileChoice ? <ProfileChooser /> : consentPending(store).length ? <ParentConsentGate /> : children}
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex justify-center px-4 md:bottom-8">
         {toast && (
           <div key={toast.id} role="status"
@@ -136,7 +142,7 @@ export function Logo({ compact, light }: { compact?: boolean; light?: boolean })
         </svg>
         <span className="font-display relative text-[15px] font-bold">5</span>
       </span>
-      {!compact && <span className={cx("font-display text-[17px] font-bold tracking-tight", light ? "text-white" : "")}>EduNazorat</span>}
+      {!compact && <span className={cx("font-display text-[17px] font-bold tracking-tight", light ? "text-white" : "")}>EduControl</span>}
     </span>
   );
 }

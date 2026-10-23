@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import {
-  DEFAULT_SLOTS, invoiceRemaining, type AbsenceRefund, type AppUser, type BillingMode, type Invoice, type Lesson, type PaymentMethod, type SchoolClass, type Student, type TeacherPay,
+  DEFAULT_SLOTS, FACE_MODEL_ID, invoiceRemaining, type AbsenceRefund, type AppUser, type BillingMode, type Invoice, type Lesson, type PaymentMethod, type SchoolClass, type Student, type TeacherPay,
 } from "@edunazorat/shared";
 
 import { usePriceLabel } from "@/components/invoice-lines";
@@ -12,6 +12,7 @@ import { fmt, weekdayName } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
 import { useRun } from "../providers";
 import { btn, Chip, cx, Field, inputCls, Modal, Segmented, Select, useConfirm } from "../ui";
+import { StudentPhotoField, type PhotoChoice } from "./student-photo";
 
 /** Telefon maydoni: +998 prefiksi bilan. */
 export function PhoneInput({ value, onChange, id, placeholder = "90 123 45 67" }: { value: string; onChange: (v: string) => void; id?: string; placeholder?: string }) {
@@ -41,6 +42,7 @@ export function StudentForm({ student, defaultClassId, onClose }: { student?: St
   const [parents, setParents] = useState(existingParents.length ? existingParents.map((p) => ({ name: p.name, phone: p.phone.slice(3) })) : [{ name: "", phone: "" }]);
   const [studentPhone, setStudentPhone] = useState(studentUser?.phone ? studentUser.phone.slice(3) : "");
   const [busy, setBusy] = useState(false);
+  const [photo, setPhoto] = useState<PhotoChoice | null>(null);
   // O'quv markazi: bir nechta guruh va katta yoshli (ota-onasiz) tinglovchi
   const center = inst.type === "center";
   const [extra, setExtra] = useState<string[]>(student?.extraClassIds ?? []);
@@ -60,8 +62,17 @@ export function StudentForm({ student, defaultClassId, onClose }: { student?: St
       parents: center && adult ? [] : parents.filter((x) => x.phone.length).map((x) => ({ name: x.name || t("Ota-ona"), phone: `998${x.phone}` })),
       studentPhone: studentPhone ? `998${studentPhone}` : undefined,
     }), student ? t("O'quvchi ma'lumotlari saqlandi") : t("O'quvchi qo'shildi"));
+    const id = p?.upsert?.students?.[0]?.id;
+    if (id && photo) {
+      const saved = app.student(id);
+      if (photo === "remove") await run(() => app.run("student.photo", { studentId: id, photo: null }));
+      // Rozilik bor — darhol yuz namunasi; yo'q — faqat rasm (namuna rozilikdan keyin)
+      else if (saved?.parentConsent) {
+        await run(() => app.run("face.enroll", { studentId: id, templates: [Array.from(photo.embedding, (v) => Math.round(v * 1e5) / 1e5)], photo: photo.crop, model: FACE_MODEL_ID }));
+      } else await run(() => app.run("student.photo", { studentId: id, photo: photo.crop }));
+    }
     setBusy(false);
-    if (p) onClose(p.upsert?.students?.[0]?.id);
+    if (p) onClose(id);
   };
 
   return (
@@ -129,6 +140,9 @@ export function StudentForm({ student, defaultClassId, onClose }: { student?: St
       <Field label={t("O'quvchi telefoni (ixtiyoriy: SMS bilan kirish uchun)")} className="mt-4">
         <PhoneInput value={studentPhone} onChange={setStudentPhone} />
       </Field>
+
+      <StudentPhotoField name={name} current={student?.facePhoto ?? student?.photo} removable={!!student?.photo && !student.facePhoto}
+        consent={!!student?.parentConsent} value={photo} onChange={setPhoto} />
     </Modal>
   );
 }

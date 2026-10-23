@@ -16,3 +16,9 @@ for (const f of ["ort-wasm-simd-threaded.wasm", "ort-wasm-simd-threaded.mjs"]) {
   copyFileSync(src, join(out, f));
 }
 console.log("onnxruntime-web fayllari public/ort ga ko'chirildi");
+
+// PDF o'qish (o'quvchilarni fayldan qo'shish): pdf.js Worker'i public/pdf ga
+const pdfDir = dirname(require.resolve("pdfjs-dist/build/pdf.worker.min.mjs"));
+const pdfOut = join(root, "public", "pdf");
+mkdirSync(pdfOut, { recursive: true });
+copyFileSync(join(pdfDir, "pdf.worker.min.mjs"), join(pdfOut, "pdf.worker.min.mjs"));

@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, GraduationCap, Plus, ScanFace, ShieldOff } from "lucide-react";
+import { Download, FileUp, GraduationCap, Plus, ScanFace, ShieldOff } from "lucide-react";
 import { addDays, attendanceRate, inClass, invoiceRemaining, weightedAverage, type Student } from "@edunazorat/shared";
 
 import { useBranchFilter } from "@/components/director/branch";
 import { StudentForm } from "@/components/director/forms";
+import { StudentImport } from "@/components/director/student-import";
 import { ReceiptIdText } from "@/components/receipt-id";
 import { PageBody, PageHeader } from "@/components/shell";
 import { Avatar, avgTone, btn, Card, cx, DataTable, EmptyState, Pill, SearchInput, Select, toneText } from "@/components/ui";
@@ -25,6 +26,7 @@ export default function DirectorStudents() {
   const [classId, setClassId] = useState("");
   const [archived, setArchived] = useState(false);
   const [form, setForm] = useState(false);
+  const [importing, setImporting] = useState(false);
   const branch = useBranchFilter();
   const classes = app.classesOfInstitution(inst.id).filter(branch.matchClass);
   const term = app.currentTerm(inst.id);
@@ -60,6 +62,7 @@ export default function DirectorStudents() {
       <PageHeader title={t("O'quvchilar")} subtitle={t("{n} nafar", { n: rows.length })}
         actions={<>
           <button type="button" className={btn.sm} onClick={download}><Download size={15} aria-hidden /> Excel</button>
+          {app.canManage && <button type="button" className={btn.sm} onClick={() => setImporting(true)}><FileUp size={15} aria-hidden /> {t("Fayldan qo'shish")}</button>}
           {app.canManage && <button type="button" className={btn.smPrimary} onClick={() => setForm(true)}><Plus size={16} aria-hidden /> {t("O'quvchi qo'shish")}</button>}
         </>} />
       <PageBody>
@@ -105,6 +108,7 @@ export default function DirectorStudents() {
           ]}
         />
       </PageBody>
+      {importing && <StudentImport classes={classes} onClose={() => setImporting(false)} />}
       {form && <StudentForm defaultClassId={classId || undefined} onClose={(id) => { setForm(false); if (id) router.push(`/director/students/${id}`); }} />}
     </>
   );

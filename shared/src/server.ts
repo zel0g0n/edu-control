@@ -17,7 +17,7 @@ import {
   notifyAnnouncement, notifyAttendance, notifyDebt, notifyGrade, notifyHomework, notifyMessage, notifyPayment,
   notifySubmissionChecked, notifySubmissionNew, type NotificationDraft,
 } from "./notify";
-import { CommandError, type Patch } from "./patch";
+import { CommandError, applyPatch, mergePatches, type Patch } from "./patch";
 import { canManageInstitution, canTeachLesson, normalizePhone, teachesSubjectInClass } from "./permissions";
 import { DEMO_OTP } from "./seed";
 import type { CommandMap, CommandName } from "./commands";
@@ -335,8 +335,41 @@ const handlers: { [K in CommandName]: Handler<K> } = {
 
   "consent.set"(ctx, { studentId, consent }) {
     const s = must(ctx.db.students.find((x) => x.id === studentId));
-    if (!(ctx.actor.role === "parent" && ctx.actor.childIds.includes(s.id))) deny();
-    return { upsert: { students: [consent ? { ...s, parentConsent: true } : { ...s, parentConsent: false, faceTemplates: [], facePhoto: undefined, faceModel: undefined }] } };
+    const parent = ctx.actor.role === "parent" && ctx.actor.childIds.includes(s.id);
+    // Rozilikni faqat ota-ona beradi. Bekor qilish: ota-ona yoki (uning murojaati bilan) administrator.
+    const admin = ctx.actor.role === "admin" && ctx.actor.institutionId === s.institutionId && !consent;
+    if (!parent && !admin) deny();
+    return { upsert: { students: [consent
+      ? { ...s, parentConsent: true, consentAt: ctx.now, consentBy: ctx.actor.id }
+      // Bekor qilinsa: namunalar va rasmlar o'chiriladi
+      : { ...s, parentConsent: false, consentAt: undefined, consentBy: undefined, faceTemplates: [], facePhoto: undefined, faceModel: undefined, photo: undefined }] } };
+  },
+
+  "student.photo"(ctx, { studentId, photo }) {
+    const s = must(ctx.db.students.find((x) => x.id === studentId));
+    requireManager(ctx, s.institutionId);
+    return { upsert: { students: [{ ...s, photo: photo ?? undefined }] } };
+  },
+
+  "student.import"(ctx, { students }) {
+    requireManager(ctx);
+    // Har qator oddiy "student.save" qoidalari bilan; keyingi qator oldingilarini ko'radi
+    // (aka-uka bolalarning ota-onasi bitta profil, loginlar va Kvitansiya ID takrorlanmaydi).
+    const db = { ...ctx.db } as Database;
+    for (const k of ["students", "users", "invoices", "classes"] as const) (db as unknown as Record<string, unknown[]>)[k] = [...ctx.db[k]];
+    const sub = { ...ctx, db };
+    const patches: Patch[] = [];
+    students.forEach((row, i) => {
+      try {
+        const p = handlers["student.save"](sub, { ...row, parents: row.parents ?? [] });
+        applyPatch(db, p);
+        patches.push(p);
+      } catch (e) {
+        if (e instanceof CommandError) throw new CommandError("err.importRow", { row: i + 1, error: e.key, ...e.params }, e.status);
+        throw e;
+      }
+    });
+    return mergePatches(...patches);
   },
 
   "face.enroll"(ctx, { studentId, templates, photo, model }) {
@@ -394,7 +427,9 @@ const handlers: { [K in CommandName]: Handler<K> } = {
       : { id: newId("u"), name: p.name.trim(), phone, role: "student", institutionId: inst, subjects: [], childIds: [], studentId: id, login: makeStudentLogin(p.name, usedLogins(ctx.db)), active: true };
     users.push(account);
     const userId = account.id;
+    // Avvalgi maydonlar (rasm, rozilik vaqti, tashqi ID) saqlanadi; quyidagilar qayta hisoblanadi
     const student: Student = {
+      ...prev,
       id, institutionId: inst, name: p.name.trim(), classId: cls.id, parentIds, userId, birthDay: p.birthDay || undefined,
       receiptId: prev?.receiptId ?? newReceiptId(usedReceiptIds(ctx.db)),
       extraClassIds: extraClassIds.length ? extraClassIds : undefined,
@@ -532,7 +567,7 @@ const handlers: { [K in CommandName]: Handler<K> } = {
     }
     holidays.sort((a, b) => a.from.localeCompare(b.from));
     // NVR kaliti faqat "nvr.configure" orqali o'zgaradi
-    return { upsert: { institutions: [{ ...inst, settings: { ...s, branches: branches.length ? branches : undefined, holidays: holidays.length ? holidays : undefined, nvr: inst.settings.nvr } }] } };
+    return { upsert: { institutions: [{ ...inst, settings: { ...s, branches: branches.length ? branches : undefined, holidays: holidays.length ? holidays : undefined, nvr: inst.settings.nvr, zams: inst.settings.zams } }] } };
   },
 
   "nvr.configure"(ctx, p) {
@@ -541,12 +576,14 @@ const handlers: { [K in CommandName]: Handler<K> } = {
     const prev = inst.settings.nvr ?? { enabled: false };
     let nvr = { ...prev, enabled: !!p.enabled };
     if (p.revoke) nvr = { enabled: false };
+    // Kalit bekor qilinsa Z_AMS bog'lanishi ham uziladi (yangi kalit bilan qayta bog'lanadi)
+    const zams = p.revoke ? undefined : inst.settings.zams;
     if (p.keyHash !== undefined) {
       if (!/^[0-9a-f]{64}$/.test(p.keyHash) || !/^edn_[0-9a-f]{4,8}$/.test(p.keyPrefix ?? "")) throw new CommandError("err.required", { field: "keyHash" });
       nvr = { ...nvr, keyHash: p.keyHash, keyPrefix: p.keyPrefix, keyCreatedAt: ctx.now };
     }
     if (nvr.enabled && !nvr.keyHash) throw new CommandError("err.nvrNoKey");
-    return { upsert: { institutions: [{ ...inst, settings: { ...inst.settings, nvr } }] } };
+    return { upsert: { institutions: [{ ...inst, settings: { ...inst.settings, nvr, zams } }] } };
   },
 
   "institution.save"(ctx, p) {
@@ -669,7 +706,7 @@ export function findLoginUser(db: Database, phone: string): AppUser {
   return ok[0];
 }
 
-/** Demo kirish: SMS yuborilmaydi, kod 1111. */
+/** Demo kirish: SMS yuborilmaydi, kod 111111. */
 export function verifyLogin(db: Database, phone: string, code: string): AppUser {
   const u = findLoginUser(db, phone);
   if (code !== DEMO_OTP) throw new CommandError("err.otp", {}, 401);

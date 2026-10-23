@@ -7,11 +7,11 @@ import { THEME_BOOT_SCRIPT } from "@/lib/theme-boot";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "EduNazorat",
+  title: "EduControl",
   description: "Xususiy maktab va o'quv markazlari uchun nazorat platformasi",
   manifest: "/manifest.webmanifest",
   icons: { icon: "/favicon-32.png", apple: "/apple-touch-icon.png" },
-  appleWebApp: { capable: true, title: "EduNazorat", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "EduControl", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

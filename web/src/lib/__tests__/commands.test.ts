@@ -20,7 +20,7 @@ beforeEach(() => { shared = new MemStorage(); });
 async function as(phone: string) {
   const s = new AppStore(new LocalTransport(() => NOW, shared as unknown as Storage, true), () => NOW);
   s.status = "ready";
-  await s.signIn(phone, "1111");
+  await s.signIn(phone, "111111");
   return s;
 }
 const TEACHER = "998903333333", PARENT = "998905555555", DIRECTOR = "998901111111", STUDENT = "998904444444", ADMIN = "998900000000";
@@ -35,12 +35,12 @@ describe("kirish", () => {
   it("noto'g'ri kod va noma'lum raqam", async () => {
     const s = new AppStore(new LocalTransport(() => NOW, null), () => NOW);
     await expectErr(s.signIn(TEACHER, "0000"), "err.otp");
-    await expectErr(s.signIn("998911111111", "1111"), "err.userNotFound");
+    await expectErr(s.signIn("998911111111", "111111"), "err.userNotFound");
   });
   it("bloklangan muassasa", async () => {
     const admin = await as(ADMIN);
     await admin.run("institution.setActive", { id: "inst_center", active: false });
-    await expectErr(admin.signIn("998902222222", "1111"), "err.institutionBlocked");
+    await expectErr(admin.signIn("998902222222", "111111"), "err.institutionBlocked");
   });
 });
 

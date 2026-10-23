@@ -23,6 +23,7 @@ export * from "./patch";
 export * from "./commands";
 export * from "./server";
 export * from "./integration";
+export * from "./zams";
 export * from "./scope";
 export * from "./i18n";
 export * from "./notify-text";

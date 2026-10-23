@@ -52,7 +52,7 @@ export async function enablePush(): Promise<PushState> {
 export function showSystemNotification(n: AppNotification): boolean {
   if (pushState() !== "granted" || document.visibilityState === "visible") return false;
   try {
-    const note = new Notification("EduNazorat", {
+    const note = new Notification("EduControl", {
       body: notificationText(store.lang, n),
       icon: n.image ?? "/icon-192.png",
       tag: n.id,

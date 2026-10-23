@@ -90,6 +90,12 @@ const SCHEMAS: { [K in CommandName]: z.ZodType<unknown> } = {
     extraClassIds: z.array(id).max(20).optional(), adult: bool.optional(), studentPhone: phone.optional(),
   }),
   "student.archive": z.object({ id, archived: bool }),
+  "student.import": z.object({
+    students: z.array(z.object({
+      name, classId: id, birthDay: day.optional(), parents: z.array(person).max(4), studentPhone: phone.optional(),
+    })).min(1).max(200),
+  }),
+  "student.photo": z.object({ studentId: id, photo: imageUrl(300_000).nullable() }),
   "teacher.save": z.object({
     id: id.optional(), name, phone, subjects: z.array(name).max(20),
     pay: z.object({ mode: z.enum(["percent", "perLesson", "fixed"]), value: money }).nullable().optional(),

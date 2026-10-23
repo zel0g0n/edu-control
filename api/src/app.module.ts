@@ -11,6 +11,7 @@ import { TokenService } from "./auth/token.service";
 import { CONFIG, type Config } from "./config";
 import { SQL, type Sql } from "./db/sql";
 import { NvrController, NvrKeyGuard } from "./nvr.controller";
+import { ZamsController, ZamsGuard, ZamsVerifyService } from "./zams.controller";
 import { AuditService } from "./audit.service";
 import { ClusterService } from "./cluster.service";
 import { LimitsService } from "./limits.service";
@@ -25,11 +26,11 @@ export class AppModule {
   static create(config: Config, sql: Sql): DynamicModule {
     return {
       module: AppModule,
-      controllers: [AppController, NvrController],
+      controllers: [AppController, NvrController, ZamsController],
       providers: [
         { provide: CONFIG, useValue: config },
         { provide: SQL, useValue: sql },
-        ClusterService, StoreService, SessionService, MfaService, LimitsService, AuditService, CredentialsService, SmsService, OtpService, TokenService, AuthGuard, RealtimeService, PushService, PaymentsService, NvrKeyGuard, SnapshotsService,
+        ClusterService, StoreService, SessionService, MfaService, LimitsService, AuditService, CredentialsService, SmsService, OtpService, TokenService, AuthGuard, RealtimeService, PushService, PaymentsService, NvrKeyGuard, SnapshotsService, ZamsVerifyService, ZamsGuard,
       ],
     };
   }

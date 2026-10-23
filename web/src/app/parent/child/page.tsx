@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { MessagesSquare, ScanFace, ShieldCheck, ShieldOff } from "lucide-react";
-import { hasOnlinePayments, type Student } from "@edunazorat/shared";
+import { hasOnlinePayments, isZamsLinked, type Student } from "@edunazorat/shared";
 
 import { ParentFrame } from "@/components/parent-frame";
 import { ReceiptIdCard } from "@/components/receipt-id";
-import { useRun } from "@/components/providers";
-import { Avatar, btn, Card, cx, ListCard, ListRow, Pill, Section, useConfirm } from "@/components/ui";
+import { Avatar, btn, Card, cx, ListCard, ListRow, Pill, Section } from "@/components/ui";
 import { useApp } from "@/lib/data/store";
 import { fmt } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
@@ -20,25 +18,15 @@ export default function Page() {
 function Profile({ student: s }: { student: Student }) {
   const app = useApp();
   const t = useT();
-  const run = useRun();
-  const { ask, dialog } = useConfirm();
-  const [busy, setBusy] = useState(false);
   const classes = app.classesOfStudent(s);
   const teachers = app.teachersOfStudent(s);
   const homerooms = new Set(classes.map((c) => c.homeroomTeacherId).filter(Boolean));
-
-  const setConsent = async (consent: boolean) => {
-    if (!consent && !(await ask(t("Rozilik bekor qilinsa, farzandingizning yuz namunasi o'chiriladi va davomat faqat qo'lda olinadi."), { danger: true, ok: t("Bekor qilish") }))) return;
-    setBusy(true);
-    await run(() => app.run("consent.set", { studentId: s.id, consent }), consent ? t("Rozilik berildi") : t("Rozilik bekor qilindi"));
-    setBusy(false);
-  };
 
   return (
     <div className="grid grid-cols-1 gap-x-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div>
         <Card className="flex items-center gap-4 p-5">
-          <Avatar name={s.name} image={s.facePhoto} size={72} />
+          <Avatar name={s.name} image={s.facePhoto ?? s.photo} size={72} />
           <div className="min-w-0">
             <div className="text-xl font-bold">{s.name}</div>
             <div className="text-sm text-muted">{classes.map((c) => c.name).join(", ")} · {app.institution(s.institutionId)?.name}</div>
@@ -47,29 +35,42 @@ function Profile({ student: s }: { student: Student }) {
         </Card>
         <ReceiptIdCard id={s.receiptId} online={hasOnlinePayments(app.institution(s.institutionId)?.settings.payments)} className="mt-3" />
 
-        <Section title={t("Yuz orqali davomat")}>
-          <Card className="p-4">
-            <div className="flex items-start gap-3">
-              <span className={cx("flex size-10 shrink-0 items-center justify-center rounded-xl", s.parentConsent ? "bg-ok/12 text-ok" : "bg-slate/12 text-slate")}>
-                {s.parentConsent ? <ShieldCheck size={20} /> : <ShieldOff size={20} />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 font-semibold">
-                  {s.parentConsent ? t("Rozilik berilgan") : t("Rozilik berilmagan")}
-                  {s.parentConsent && <Pill tone={s.facePhoto ? "ok" : "warn"} icon={ScanFace}>{s.facePhoto ? t("Namuna olingan") : t("Namuna hali olinmagan")}</Pill>}
-                </div>
-                <p className="mt-1 text-sm text-muted">
-                  {t("O'qituvchi darsda kamerani yoqadi, dastur farzandingiz yuzini taniydi va sizga faqat uning yuz kesimini yuboradi. Video va to'liq rasm saqlanmaydi; serverda faqat raqamli yuz namunasi turadi.")}
+        {isZamsLinked(s) ? (
+          <Section title={t("Yuz orqali davomat")}>
+            <Card className="p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary"><ScanFace size={20} /></span>
+                <p className="min-w-0 flex-1 text-sm text-muted">
+                  {t("Davomatni maktabdagi kamera tizimi (Z_AMS) oladi. Farzandingiz rasmidan foydalanishga rozilik maktabda olingan; savollar va rozilikni bekor qilish uchun maktab administratsiyasiga murojaat qiling.")}
                 </p>
               </div>
-            </div>
-            <div className="mt-4 flex justify-end">
-              {s.parentConsent
-                ? <button type="button" className={btn.sm} disabled={busy} onClick={() => setConsent(false)}>{t("Rozilikni bekor qilish")}</button>
-                : <button type="button" className={btn.smPrimary} disabled={busy} onClick={() => setConsent(true)}>{t("Rozilik berish")}</button>}
-            </div>
-          </Card>
-        </Section>
+            </Card>
+          </Section>
+        ) : (
+          <Section title={t("Yuz orqali davomat")}>
+            <Card className="p-4">
+              <div className="flex items-start gap-3">
+                <span className={cx("flex size-10 shrink-0 items-center justify-center rounded-xl", s.parentConsent ? "bg-ok/12 text-ok" : "bg-slate/12 text-slate")}>
+                  {s.parentConsent ? <ShieldCheck size={20} /> : <ShieldOff size={20} />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 font-semibold">
+                    {s.parentConsent ? t("Rozilik berilgan") : t("Rozilik berilmagan")}
+                    {s.parentConsent && <Pill tone={s.facePhoto ? "ok" : "warn"} icon={ScanFace}>{s.facePhoto ? t("Namuna olingan") : t("Namuna hali olinmagan")}</Pill>}
+                  </div>
+                  <p className="mt-1 text-sm text-muted">
+                    {t("O'qituvchi darsda kamerani yoqadi, dastur farzandingiz yuzini taniydi va sizga faqat uning yuz kesimini yuboradi. Video va to'liq rasm saqlanmaydi; serverda faqat raqamli yuz namunasi turadi.")}
+                  </p>
+                </div>
+              </div>
+              {/* Rozilik kirishda so'raladi; bekor qilish — maktab administratsiyasi orqali */}
+              <p className="mt-3 text-xs text-muted">
+                {s.consentAt ? `${t("Rozilik berilgan sana")}: ${fmt.dateFull(new Date(s.consentAt).toISOString().slice(0, 10))}. ` : ""}
+                {t("Rozilikni bekor qilish uchun maktab administratsiyasiga murojaat qiling.")}
+              </p>
+            </Card>
+          </Section>
+        )}
       </div>
 
       <Section title={t("O'qituvchilar")}>
@@ -84,7 +85,6 @@ function Profile({ student: s }: { student: Student }) {
           ))}
         </ListCard>
       </Section>
-      {dialog}
     </div>
   );
 }

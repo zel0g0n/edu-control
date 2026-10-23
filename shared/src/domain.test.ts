@@ -706,3 +706,50 @@ describe("yuz namunasi uzatishda ixcham", () => {
     expect(cos(back.students[0].faceTemplates[0], db.students[0].faceTemplates[0])).toBeGreaterThan(0.999);
   });
 });
+
+describe("o'quvchilarni fayldan qo'shish va rozilik", () => {
+  it("ko'p o'quvchi bir yo'la: aka-ukaning ota-onasi bitta profil, xato qator raqami bilan", () => {
+    const db = seedDatabase(NOW);
+    const adm = db.users.find((u) => u.id === "u_adm")!;
+    const p = executeCommand(db, adm, "student.import", { students: [
+      { name: "Ali Valiyev", classId: "c_5a", birthDay: "2014-03-02", parents: [{ name: "Ona", phone: "93 700 00 01" }] },
+      { name: "Vali Valiyev", classId: "c_7b", parents: [{ name: "Ona", phone: "93 700 00 01" }], studentPhone: "93 700 00 02" },
+    ] }, NOW);
+    applyPatch(db, p);
+    const kids = db.students.filter((s) => s.name.endsWith("Valiyev"));
+    expect(kids.length).toBe(2);
+    expect(new Set(kids.map((k) => k.receiptId)).size).toBe(2);
+    const parents = db.users.filter((u) => u.phone === "998937000001");
+    expect(parents.length).toBe(1);
+    expect(parents[0].childIds.sort()).toEqual(kids.map((k) => k.id).sort());
+    expect(kids.find((k) => k.name === "Ali Valiyev")!.birthDay).toBe("2014-03-02");
+    // 2-qatorda noto'g'ri sinf → hech biri qo'shilmaydi
+    const before = db.students.length;
+    expect(() => executeCommand(db, adm, "student.import", { students: [
+      { name: "Bir", classId: "c_5a", parents: [] }, { name: "Ikki", classId: "c_yoq", parents: [] },
+    ] }, NOW)).toThrow("err.importRow");
+    expect(db.students.length).toBe(before);
+    // O'qituvchi qo'sha olmaydi
+    expect(() => executeCommand(db, db.users.find((u) => u.id === "t_math")!, "student.import", { students: [{ name: "X", classId: "c_7b", parents: [] }] }, NOW)).toThrow();
+  });
+
+  it("rozilik: faqat ota-ona beradi (vaqti bilan), administrator faqat bekor qiladi; rasm rozilikgacha o'qituvchiga ko'rinmaydi", () => {
+    const db = seedDatabase(NOW);
+    const adm = db.users.find((u) => u.id === "u_adm")!;
+    const s = db.students.find((x) => x.id === "s_a2")!;
+    s.parentConsent = false;
+    applyPatch(db, executeCommand(db, adm, "student.photo", { studentId: s.id, photo: "https://api.example.uz/files/0123456789abcdef0123456789abcdef" }, NOW));
+    const teacher = db.users.find((u) => u.id === "t_uzb")!;
+    expect(scopeDatabase(db, teacher).students.find((x) => x.id === s.id)!.photo).toBeUndefined();
+    expect(scopeDatabase(db, adm).students.find((x) => x.id === s.id)!.photo).toMatch(/files/);
+    expect(() => executeCommand(db, adm, "consent.set", { studentId: s.id, consent: true }, NOW)).toThrow();
+    const parent = db.users.find((u) => u.id === "u_tparent")!;
+    applyPatch(db, executeCommand(db, parent, "consent.set", { studentId: s.id, consent: true }, NOW));
+    const after = db.students.find((x) => x.id === s.id)!;
+    expect(after).toMatchObject({ parentConsent: true, consentAt: NOW, consentBy: parent.id });
+    expect(scopeDatabase(db, teacher).students.find((x) => x.id === s.id)!.photo).toMatch(/files/);
+    // Bekor qilish: rasm va namunalar o'chadi
+    applyPatch(db, executeCommand(db, adm, "consent.set", { studentId: s.id, consent: false }, NOW));
+    expect(db.students.find((x) => x.id === s.id)).toMatchObject({ parentConsent: false, photo: undefined, faceTemplates: [] });
+  });
+});

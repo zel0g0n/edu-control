@@ -67,7 +67,7 @@ npm run dev:web
 `Ready` yozuvi chiqqach brauzerda oching: **http://localhost:3000**
 
 - Kirish sahifasida demo hisoblardan birini bosing (ota-ona, o'qituvchi, direktor, admin...).
-- Demo parol: **246810** (SMS kod bilan kirsangiz: **1111**)
+- Demo parol: **246810** (SMS kod bilan kirsangiz: **111111**)
 - Ma'lumotlar shu brauzerning o'zida saqlanadi. Tozalash: profil oynasi → "Demo ma'lumotlarni tiklash".
 - To'xtatish: terminalda **Ctrl + C**.
 
@@ -171,7 +171,10 @@ Tekshirish: http://localhost:4000/health → `{"ok":true...}` chiqsa server ishl
    o'quvchilar (ota-ona raqamlari bilan) → to'lov summasi.
 3. **O'qituvchi, ota-ona, o'quvchi** o'z raqamlari bilan kiradi; rolni tizim o'zi aniqlaydi.
 4. Yuz orqali davomat uchun: direktor/o'qituvchi o'quvchi kartasida ota-ona roziligini belgilaydi
-   va yuz namunasini oladi (kamera kerak, 5-bo'lim).
+   va yuz namunasini oladi: kamera orqali (5-bo'lim) yoki **"Rasmdan"** tugmasi bilan galereyadagi aniq rasmidan
+   (faqat shu o'quvchi ko'ringan, yorug', to'g'ridan; 2–3 ta rasm yaxshiroq). Rasm tahlili telefonda bo'ladi,
+   serverga faqat raqamli namuna va kichik yuz kesimi ketadi. Yuzi topilmagan, bir nechta yuzli, xira yoki juda yon
+   tomonga burilgan rasm qabul qilinmaydi; har xil odamning rasmlari aralashsa, saqlanmaydi.
 
 ---
 
@@ -360,7 +363,7 @@ git push -u origin main
 4. Environment Variables: **hech narsa qo'shmang** (`NEXT_PUBLIC_API_URL` yo'q = demo).
 5. **Deploy** → 3-5 daqiqa → `https://edunazorat-xxx.vercel.app` manzili beriladi.
 
-Telefonda shu manzilni oching, kod `1111`. Keyin har `git push` da sayt avtomatik yangilanadi.
+Telefonda shu manzilni oching, kod `111111`. Keyin har `git push` da sayt avtomatik yangilanadi.
 
 Demo'da sinov uchun haqiqiy o'quvchilarning yuz namunasini olsangiz, u faqat o'sha telefonda
 saqlanadi. Ota-onalar roziligini oling va sinovdan keyin profil → "Demo ma'lumotlarni tiklash" bilan o'chiring.
@@ -462,7 +465,7 @@ ESKIZ_FROM=4546
 Kalitlar kiritilgach kod ekranda ko'rsatilmaydi, faqat SMS'da keladi.
 Majburan sinov rejimi: `SMS_DEV_MODE=true` (ishlab chiqarishda **ishlatmang**).
 
-Kod cheklovlari: 4 raqam, 5 daqiqa amal qiladi, 5 urinish, qayta yuborish 60 soniyadan keyin, ko'p xatoda 15 daqiqa blok.
+Kod cheklovlari: 6 raqam, 5 daqiqa amal qiladi, 5 urinish, qayta yuborish 60 soniyadan keyin, ko'p xatoda 15 daqiqa blok.
 
 ### 7.2 Push bildirishnoma (ilova yopiq bo'lsa ham)
 
@@ -488,6 +491,26 @@ iPhone'da sayt avval "Bosh ekranga qo'shish" orqali o'rnatilishi kerak (iOS 16.4
 Bu uchun API internetdan ochiq bo'lishi kerak (6-bo'lim yoki 5.2 tunnel bilan sinov).
 
 ---
+
+### 7.4 Monitoring va tiklash sinovi
+
+**Server o'chsa xabar olish.** `GET /health` baza va ma'lumot yuklanganini tekshiradi: hammasi joyida bo'lsa
+`{"ok":true,...}`, aks holda HTTP 503. Ikki usul:
+
+- **Bepul, GitHub orqali:** `.github/workflows/uptime.yml` har ~10 daqiqada tekshiradi. GitHub → Settings → Secrets and
+  variables → Actions: `TG_TOKEN`, `TG_CHAT` (secrets) va `MONITOR_URLS` (variable, masalan
+  `https://api.maktab.uz/health https://admin.zams.uz/health`). Telegram bot: @BotFather → yangi bot → token; botga
+  bitta xabar yozing va `https://api.telegram.org/bot<TOKEN>/getUpdates` dan `chat.id` ni oling.
+- **Aniqroq, cron bilan** (tekshirilayotgan serverning o'zida emas, boshqa kompyuter yoki serverda):
+  `* * * * * TG_TOKEN=... TG_CHAT=... MONITOR_URLS="..." /opt/edunazorat/tools/ops/monitor.sh`. Bir martalik uzilishga
+  xabar bermaydi; 2 daqiqa ishlamasa xabar, so'ng har 30 daqiqada eslatma, tiklanganda "Tiklandi".
+
+**Zaxiradan tiklashni sinash** (oyiga bir marta): `tools/ops/restore-check.sh` oxirgi nusxani alohida bo'sh sinov
+bazasiga (`RESTORE_TEST_URL`) tiklaydi va yozuvlar sonini asosiy baza bilan solishtiradi. Sinov bazasi har safar
+tozalanadi: hech qachon asosiy baza manzilini bermang (skript buni tekshiradi).
+
+**Migratsiyalar:** `api/src/db/schema.ts` → `VERSIONED`. Har o'zgarish yangi raqam bilan ro'yxat oxiriga qo'shiladi va
+bir marta bajariladi (`schema_migrations` jadvali). Eskisini o'zgartirmang.
 
 ## 8. Tekshirish buyruqlari
 

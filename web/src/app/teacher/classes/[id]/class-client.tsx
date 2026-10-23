@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { BookOpen, MessagesSquare, ScanFace, ShieldOff } from "lucide-react";
+import { BookOpen, ImageUp, MessagesSquare, ScanFace, ShieldOff } from "lucide-react";
 import { addDays, attendanceRate, weightedAverage, type Student } from "@edunazorat/shared";
 
 import { WeekSchedule } from "@/components/learner";
@@ -98,12 +98,23 @@ export function ClassClient() {
               }]),
               {
                 key: "face", header: t("Yuz namunasi"),
-                cell: (s) => !s.parentConsent ? <Pill tone="slate" icon={ShieldOff}>{t("Rozilik yo'q")}</Pill>
-                  : needsReenroll(s) ? <Link href={`/teacher/enroll/${s.id}?from=${cls.id}`} className={cx(btn.smPrimary, "h-8 !bg-warn")}><ScanFace size={15} aria-hidden /> {t("Qayta olish kerak")}</Link>
-                  : usableTemplates(s).length ? (
-                    <span className="flex items-center gap-2"><Pill tone="ok" icon={ScanFace}>{t("Bor")}</Pill>
-                      <Link href={`/teacher/enroll/${s.id}?from=${cls.id}`} className="text-xs text-primary hover:underline">{t("Yangilash")}</Link></span>
-                  ) : <Link href={`/teacher/enroll/${s.id}?from=${cls.id}`} className={cx(btn.smPrimary, "h-8")}><ScanFace size={15} aria-hidden /> {t("Ro'yxatga olish")}</Link>,
+                cell: (s) => {
+                  if (!s.parentConsent) return <Pill tone="slate" icon={ShieldOff}>{t("Rozilik yo'q")}</Pill>;
+                  const href = `/teacher/enroll/${s.id}?from=${cls.id}`;
+                  // Kamera bilan yoki galereyadagi aniq rasmidan
+                  const fromPhoto = (
+                    <Link href={`${href}&mode=photo`} className={cx(btn.sm, "h-8 px-2.5")} title={t("Rasmdan yuklash")}>
+                      <ImageUp size={15} aria-hidden /> {t("Rasmdan")}
+                    </Link>
+                  );
+                  if (needsReenroll(s)) return <span className="flex flex-wrap items-center gap-1.5"><Link href={href} className={cx(btn.smPrimary, "h-8 !bg-warn")}><ScanFace size={15} aria-hidden /> {t("Qayta olish kerak")}</Link>{fromPhoto}</span>;
+                  if (usableTemplates(s).length) return (
+                    <span className="flex flex-wrap items-center gap-2"><Pill tone="ok" icon={ScanFace}>{t("Bor")}</Pill>
+                      <Link href={href} className="text-xs text-primary hover:underline">{t("Yangilash")}</Link>
+                      <Link href={`${href}&mode=photo`} className="text-xs text-primary hover:underline">{t("Rasmdan")}</Link></span>
+                  );
+                  return <span className="flex flex-wrap items-center gap-1.5"><Link href={href} className={cx(btn.smPrimary, "h-8")}><ScanFace size={15} aria-hidden /> {t("Ro'yxatga olish")}</Link>{fromPhoto}</span>;
+                },
               },
               {
                 key: "msg", header: "", hideOnMobile: true, align: "right",

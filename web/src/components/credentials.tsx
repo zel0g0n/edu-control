@@ -26,7 +26,7 @@ export function CredentialCardModal({ issued, onClose }: { issued: IssuedCredent
   const [copied, setCopied] = useState(false);
   const url = siteUrl();
   const text = [
-    t("EduNazorat: kirish ma'lumotlari"),
+    t("EduControl: kirish ma'lumotlari"),
     `${issued.name}`,
     `${t("Sayt")}: ${url}`,
     `${t("Login")}: ${issued.login}`,
@@ -44,7 +44,7 @@ export function CredentialCardModal({ issued, onClose }: { issued: IssuedCredent
   return (
     <Modal open onClose={onClose} title={t("Kirish kartasi")}>
       <div id="credential-card" className="rounded-2xl border-2 border-dashed border-line p-5">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted">EduNazorat</div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted">EduControl</div>
         <div className="mt-1 text-lg font-bold">{issued.name}</div>
         <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[15px]">
           <dt className="text-muted">{t("Sayt")}</dt><dd className="break-all font-medium">{url.replace(/^https?:\/\//, "")}</dd>

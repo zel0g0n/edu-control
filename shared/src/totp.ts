@@ -75,7 +75,7 @@ export async function verifyTotp(secret: string, code: string, nowMs: number, la
   return null;
 }
 
-export function otpauthUrl(secret: string, account: string, issuer = "EduNazorat"): string {
+export function otpauthUrl(secret: string, account: string, issuer = "EduControl"): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=${TOTP_STEP_S}`;
 }

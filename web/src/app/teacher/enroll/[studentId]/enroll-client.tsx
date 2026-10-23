@@ -3,37 +3,61 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, UserX } from "lucide-react";
-import { inClass } from "@edunazorat/shared";
+import { ChevronLeft, ImageUp, UserX } from "lucide-react";
+import { inClass, type Student } from "@edunazorat/shared";
 
 import { CameraStage, faceSnapshot, type CameraStageHandle } from "@/components/camera-stage";
-import { useRun, useToast } from "@/components/providers";
 import { useRouteParam } from "@/components/route-param";
 import { btn, cx, EmptyState, Modal } from "@/components/ui";
 import { faceWorker } from "@/lib/face/client";
 import { FACE } from "@/lib/face/config";
 import { l2normalize } from "@/lib/face/align";
-import { cosine, FaceGallery, usableTemplates } from "@/lib/face/matcher";
 import { eyeDistance, yawRatio, type Detection } from "@/lib/face/yunet";
 import { useApp } from "@/lib/data/store";
 import { t as tr } from "@/lib/i18n";
 import { useT } from "@/lib/i18n/react";
+import { findDuplicate, samplesConsistent, useSaveEnrollment } from "./enroll-shared";
+import { PhotoEnroll } from "./photo-enroll";
 
 type Step = 0 | 1 | 2 | 3;
 const INSTRUCTION = () => [tr("1/3 · To'g'ri kameraga qarasin"), tr("2/3 · Boshini biroz bir tomonga bursin"), tr("3/3 · Endi biroz ikkinchi tomonga"), tr("Tayyor")];
 
-/** O'quvchi yuzini ro'yxatga olish: 3 namuna (to'g'ri, ikki tomon). */
+/**
+ * O'quvchi yuzini ro'yxatga olish: kamera orqali (3 holat) yoki tayyor rasmdan (galereya).
+ * Ikkala usulda ham rasmning o'zi serverga ketmaydi: faqat raqamli namuna va kichik yuz kesimi.
+ */
 export function EnrollClient() {
   const app = useApp();
   const t = useT();
-  const run = useRun();
-  const router = useRouter();
-  const toast = useToast();
   const studentId = useRouteParam("studentId");
   const s = app.student(studentId);
+  const params = useSearchParams();
+  const router = useRouter();
   // Qaysi guruhdan kelgan bo'lsa o'shanga qaytadi (o'quv markazida o'quvchi bir nechta guruhda)
-  const from = useSearchParams().get("from");
+  const from = params.get("from");
   const backClass = from && s && inClass(s, from) ? from : s?.classId;
+  const backHref = `/teacher/classes/${backClass}?tab=students`;
+  const mode = params.get("mode") === "photo" ? "photo" : "camera";
+  const setMode = (m: "photo" | "camera") => {
+    const q = new URLSearchParams(params.toString());
+    if (m === "photo") q.set("mode", "photo");
+    else q.delete("mode");
+    router.replace(`/teacher/enroll/${studentId}?${q.toString()}`);
+  };
+
+  if (!s) return <EmptyState icon={UserX} title={t("O'quvchi topilmadi")} />;
+  if (!s.parentConsent) return <EmptyState icon={UserX} title={t("Ota-ona roziligisiz yuz ro'yxatga olinmaydi")} />;
+  return mode === "photo"
+    ? <PhotoEnroll student={s} backHref={backHref} onCamera={() => setMode("camera")} />
+    : <CameraEnroll student={s} backHref={backHref} onPhoto={() => setMode("photo")} />;
+}
+
+/** Kamera orqali: 3 namuna (to'g'ri, ikki tomon). */
+function CameraEnroll({ student: s, backHref, onPhoto }: { student: Student; backHref: string; onPhoto: () => void }) {
+  const app = useApp();
+  const t = useT();
+  const router = useRouter();
+  const saveEnrollment = useSaveEnrollment(s, backHref);
   const stage = useRef<CameraStageHandle>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorText, setErrorText] = useState("");
@@ -49,14 +73,7 @@ export function EnrollClient() {
   const stepRef = useRef<Step>(0);
   const paused = useRef(false);
 
-  const save = async () => {
-    if (!s) return;
-    const templates = samples.current.map((e) => Array.from(e, (v) => Math.round(v * 1e5) / 1e5));
-    const ok = await run(() => app.run("face.enroll", { studentId: s.id, templates, photo: photo.current, model: FACE.modelId }));
-    if (!ok) return;
-    toast(t("{name}: yuz namunasi saqlandi", { name: s.name }), "ok");
-    router.replace(`/teacher/classes/${backClass}?tab=students`);
-  };
+  const save = () => saveEnrollment(samples.current, photo.current);
 
   useEffect(() => {
     faceWorker.init().then(() => setStatus("ready")).catch((e: Error) => {
@@ -79,20 +96,12 @@ export function EnrollClient() {
     const finish = () => {
       // 1) Sifat: namunalar bir-biriga o'xshash bo'lishi kerak.
       const list = samples.current;
-      let minSim = 1;
-      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) minSim = Math.min(minSim, cosine(list[i], list[j]));
-      if (minSim < FACE.reviewThreshold) return restart(tr("Namunalar sifati past (yorug'likni tekshiring). Qaytadan boshlaymiz."));
+      if (!samplesConsistent(list)) return restart(tr("Namunalar sifati past (yorug'likni tekshiring). Qaytadan boshlaymiz."));
       // 2) Takror: boshqa o'quvchiga juda o'xshamasligi kerak.
-      const others = app.studentsOfInstitution(s.institutionId).filter((x) => x.id !== s.id);
-      const gallery = new FaceGallery(Object.fromEntries(others.map((x) => [x.id, usableTemplates(x)])));
-      let worst = { id: "", score: 0 };
-      for (const e of list) {
-        const r = gallery.match(e);
-        if (r.studentId && r.score > worst.score) worst = { id: r.studentId, score: r.score };
-      }
-      if (worst.id && worst.score >= FACE.matchThreshold) {
+      const dup = findDuplicate(app, s, list);
+      if (dup) {
         paused.current = true;
-        setDuplicate({ name: app.student(worst.id)?.name ?? "", score: worst.score });
+        setDuplicate(dup);
         return;
       }
       void save();
@@ -162,16 +171,17 @@ export function EnrollClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, s?.id]);
 
-  if (!s) return <EmptyState icon={UserX} title={t("O'quvchi topilmadi")} />;
-  if (!s.parentConsent) return <EmptyState icon={UserX} title={t("Ota-ona roziligisiz yuz ro'yxatga olinmaydi")} />;
-
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
       <header className="flex items-center gap-3 px-3 pt-3 pb-2">
-        <Link href={`/teacher/classes/${backClass}?tab=students`} className="flex size-11 items-center justify-center rounded-full hover:bg-white/10" aria-label={t("Orqaga")}>
+        <Link href={backHref} className="flex size-11 items-center justify-center rounded-full hover:bg-white/10" aria-label={t("Orqaga")}>
           <ChevronLeft size={26} />
         </Link>
-        <div className="flex-1 truncate text-lg font-bold">{s.name}</div>
+        <div className="min-w-0 flex-1 truncate text-lg font-bold">{s.name}</div>
+        {/* O'quvchi yonida bo'lmasa: galereyadagi aniq rasmidan */}
+        <button type="button" onClick={onPhoto} className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-white/12 px-3.5 text-sm font-semibold hover:bg-white/20">
+          <ImageUp size={17} aria-hidden /> {t("Rasmdan")}
+        </button>
       </header>
       <div className="flex flex-col items-center gap-2 px-4 pb-3">
         <div className="flex gap-2">

@@ -80,7 +80,7 @@ export class PushService {
       for (const s of subs.filter((x) => mine.has(x.user_id))) {
         const sub = typeof s.data === "string" ? JSON.parse(s.data) : s.data;
         // Rasm (yuz kesimi) push'ga qo'shilmaydi: hajm cheklovi va maxfiylik, ilovada ko'rinadi.
-        const payload = JSON.stringify({ title: "EduNazorat", body: notificationTextPlain(s.lang, n), tag: n.id, url: this.link(n) });
+        const payload = JSON.stringify({ title: "EduControl", body: notificationTextPlain(s.lang, n), tag: n.id, url: this.link(n) });
         try {
           await webpush.sendNotification(sub, payload, { TTL: 24 * 3600 });
         } catch (e) {

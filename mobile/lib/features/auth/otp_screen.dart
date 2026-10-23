@@ -80,7 +80,7 @@ class _OtpScreenState extends State<OtpScreen> {
             Text('SMS kodni kiriting',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
-            Text('${Fmt.phone(widget.phone)} raqamiga 4 xonali kod yuborildi.',
+            Text('${Fmt.phone(widget.phone)} raqamiga 6 xonali kod yuborildi.',
                 style: TextStyle(color: scheme.onSurfaceVariant)),
             const SizedBox(height: 28),
             TextField(
@@ -88,16 +88,16 @@ class _OtpScreenState extends State<OtpScreen> {
               autofocus: true,
               keyboardType: TextInputType.number,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 28, letterSpacing: 16, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 28, letterSpacing: 10, fontWeight: FontWeight.w700),
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(4),
+                LengthLimitingTextInputFormatter(6),
               ],
               onChanged: (v) {
                 if (_error != null) setState(() => _error = null);
-                if (v.length == 4) _verify();
+                if (v.length == 6) _verify();
               },
-              decoration: InputDecoration(hintText: '••••', errorText: _error),
+              decoration: InputDecoration(hintText: '••••••', errorText: _error),
             ),
             const SizedBox(height: 16),
             FilledButton(onPressed: _verify, child: const Text('Kirish')),

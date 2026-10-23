@@ -193,7 +193,7 @@ Vercel (sayt) ham, Render (API) ham o'zi qayta yig'iladi. Baza saqlanib qoladi.
 | Render log: `password authentication failed` yoki `ENOTFOUND` | `DATABASE_URL` noto'g'ri nusxalangan: Neon'dan qayta nusxalang |
 | `/health` ochiladi, sayt "Server bilan aloqa yo'q" deydi | `WEB_ORIGIN` Vercel manziliga aynan teng emas (`https://`, oxirida `/` yo'q). Tuzatib **Save** |
 | Demo parol 246810 bilan kirib bo'lmaydi | Bazada `SEED_DEMO=true` bilan yaratilgan demo ma'lumot bo'lishi kerak; aks holda administrator parol beradi |
-| Saytda kod sariq qutida chiqmaydi, demo kod 1111 ishlaydi | Sayt hali demo rejimda: `NEXT_PUBLIC_API_URL` saqlanmagan yoki **Redeploy** qilinmagan |
+| Saytda kod sariq qutida chiqmaydi, demo kod 111111 ishlaydi | Sayt hali demo rejimda: `NEXT_PUBLIC_API_URL` saqlanmagan yoki **Redeploy** qilinmagan |
 | Vercel'ning "Preview" manzilidan ochilsa ishlamaydi | Asosiy (Production) manzildan foydalaning yoki uni ham `WEB_ORIGIN` ga vergul bilan qo'shing |
 | Birinchi ochilish 1 daqiqa kutadi | Server uxlagan: yuqoridagi cron-job.org |
 | Kirishda `429` | Bir raqamga kod 60 soniyada bir marta: kuting |

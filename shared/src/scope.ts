@@ -19,7 +19,7 @@ const when = <T>(ok: (x: T) => boolean, map: (x: T) => T = keep) => (x: T) => (o
 /** Begona foydalanuvchining telefonini yashirish. */
 const publicUser = (u: AppUser): AppUser => ({ ...u, phone: "", childIds: [], studentId: undefined, pay: undefined, login: undefined });
 /** Yuz namunalari faqat davomat oladiganlarga kerak. */
-const noFace = (s: Student): Student => ({ ...s, faceTemplates: [], facePhoto: undefined });
+const noFace = (s: Student): Student => ({ ...s, faceTemplates: [], facePhoto: undefined, photo: undefined });
 
 export function scopeFor(db: Database, user: AppUser): Scope {
   const mine = when((n: AppNotification) => n.userId === user.id);
@@ -81,10 +81,11 @@ export function scopeFor(db: Database, user: AppUser): Scope {
     const hwIds = new Set(db.homeworks.filter((h) => classIds.has(h.classId)).map((h) => h.id));
     const threadIds = new Set(db.threads.filter((t) => t.teacherId === user.id).map((t) => t.id));
     return {
-      institutions: when((i) => i.id === inst, (i) => ({ ...i, settings: { ...i.settings, payments: {}, nvr: undefined } })),
+      institutions: when((i) => i.id === inst, (i) => ({ ...i, settings: { ...i.settings, payments: {}, nvr: undefined, zams: undefined } })),
       users: (u) => (u.id === user.id ? u : u.institutionId === inst && u.role === "teacher" ? publicUser(u) : parentIds.has(u.id) ? { ...u, childIds: u.childIds.filter((c) => studentIds.has(c)) } : null),
       classes: when((c) => c.institutionId === inst),
-      students: when((s) => studentIds.has(s.id)),
+      // Administrator yuklagan rasm o'qituvchiga faqat ota-ona roziligidan keyin
+      students: when((s) => studentIds.has(s.id), (s) => (s.photo && !s.parentConsent ? { ...s, photo: undefined } : s)),
       lessons: when((l) => db.classes.some((c) => c.id === l.classId && c.institutionId === inst)),
       terms: when((t) => t.institutionId === inst),
       grades: when((g) => studentIds.has(g.studentId)),
@@ -115,10 +116,10 @@ export function scopeFor(db: Database, user: AppUser): Scope {
   // Katta yoshli o'quvchi o'qituvchi bilan o'zi yozishadi
   const threadIds = new Set(db.threads.filter((t) => (isParent || adultSelf) && t.parentId === user.id).map((t) => t.id));
   return {
-    institutions: when((i) => instIds.has(i.id), (i) => ({ ...i, settings: { ...i.settings, matchThreshold: 0, reviewThreshold: 0, nvr: undefined } })),
+    institutions: when((i) => instIds.has(i.id), (i) => ({ ...i, settings: { ...i.settings, matchThreshold: 0, reviewThreshold: 0, nvr: undefined, zams: undefined } })),
     users: (u) => (u.id === user.id ? u : teacherIds.has(u.id) ? publicUser(u) : null),
     classes: when((c) => classIds.has(c.id)),
-    students: when((s) => childIds.has(s.id), (s) => ({ ...noFace(s), facePhoto: isParent ? s.facePhoto : undefined, parentIds: isParent ? s.parentIds : [] })),
+    students: when((s) => childIds.has(s.id), (s) => ({ ...noFace(s), facePhoto: isParent ? s.facePhoto : undefined, photo: isParent ? s.photo : undefined, parentIds: isParent ? s.parentIds : [] })),
     lessons: when((l) => classIds.has(l.classId)),
     terms: when((t) => instIds.has(t.institutionId)),
     grades: when((g) => childIds.has(g.studentId)),
@@ -179,7 +180,7 @@ export function isEmptyPatch(p: Patch): boolean {
  * ko'chishi...): boshqa foydalanuvchilar bazani qayta yuklashi kerak.
  */
 export const STRUCTURAL_COMMANDS: readonly string[] = [
-  "lesson.save", "lesson.delete", "class.save", "class.delete", "student.save", "student.archive",
+  "lesson.save", "lesson.delete", "class.save", "class.delete", "student.save", "student.import", "student.archive",
   "teacher.save", "teacher.setActive", "admin.save", "institution.save", "institution.setActive", "settings.save", "term.save", "nvr.configure",
 ];
 

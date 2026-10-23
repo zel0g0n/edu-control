@@ -40,11 +40,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
-      { source: "/:dir(face|ort|models|demo|_next)/:path*", headers: [{ key: "Content-Security-Policy", value: ASSET_CSP }] },
+      { source: "/:dir(face|ort|pdf|models|demo|_next)/:path*", headers: [{ key: "Content-Security-Policy", value: ASSET_CSP }] },
       { source: "/sw.js", headers: [{ key: "Content-Security-Policy", value: ASSET_CSP }] },
       {
       // SIMULATE_CDN=1: Vercel kabi, statik fayllarga sarlavha qo'yilmaydi (sinov uchun)
-      source: process.env.SIMULATE_CDN ? "/((?!_next/|ort/|face/|models/|demo/).*)" : "/:path*",
+      source: process.env.SIMULATE_CDN ? "/((?!_next/|ort/|face/|pdf/|models/|demo/).*)" : "/:path*",
       headers: [
         { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
         { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },

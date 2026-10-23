@@ -68,6 +68,13 @@ export function NvrBlock() {
       ) : (
         <p className="text-sm text-muted">{t("Kalit hali yaratilmagan.")}</p>
       )}
+      {inst.settings.zams && (
+        <p className="mt-2 text-sm">
+          <Pill tone="ok">Z_AMS</Pill>{" "}
+          {t("Z_AMS bilan bog'langan: {name} (№{id}). O'quvchilar ismi va sinfi Z_AMS'dan keladi.", { name: inst.settings.zams.schoolName ?? "", id: inst.settings.zams.schoolId })}
+          {inst.settings.zams.lastSyncAt && <span className="text-muted"> {t("Oxirgi sinxronlash: {d}", { d: `${fmt.date(inst.settings.zams.lastSyncAt)} ${fmt.time(inst.settings.zams.lastSyncAt)}` })}</span>}
+        </p>
+      )}
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" className={btn.sm} disabled={busy} onClick={create}>
           <KeyRound size={15} aria-hidden /> {nvr.keyHash ? t("Yangi kalit (eskisi bekor bo'ladi)") : t("Kalit yaratish va yoqish")}

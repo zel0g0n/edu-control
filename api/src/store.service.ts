@@ -69,6 +69,8 @@ export class StoreService implements OnModuleInit, OnModuleDestroy {
   private markReady!: () => void;
   /** Baza yuklanib, migratsiyalar tugagach (boshqa xizmatlar shuni kutadi). */
   readonly ready = new Promise<void>((r) => { this.markReady = r; });
+  /** Baza to'liq yuklandi (health tekshiruvi uchun). */
+  loaded = false;
 
   async onModuleInit() {
     await migrate(this.sql);
@@ -103,6 +105,7 @@ export class StoreService implements OnModuleInit, OnModuleDestroy {
     // patch_log faqat nusxalarni sinxronlash uchun: 2 kundan eskisi kerak emas (yozuvlar records'da)
     this.prune = setInterval(() => void this.sql.query("DELETE FROM patch_log WHERE at < now() - interval '2 days'").catch(() => undefined), 3_600_000);
     this.prune.unref();
+    this.loaded = true;
     this.markReady();
   }
 

@@ -29,7 +29,7 @@ export class NvrKeyGuard implements CanActivate {
     if ((await this.limits.peek(`nvrfail:${ip}`)).n >= 20) throw new CommandError("err.tooMany", {}, 429);
     const h = req.headers.authorization;
     const key = h?.startsWith("Bearer ") ? h.slice(7).trim() : String(req.headers["x-api-key"] ?? "").trim();
-    const inst = NVR_KEY_PATTERN.test(key) ? this.find(key) : undefined;
+    const inst = this.find(key);
     if (!inst) {
       await this.limits.hit(`nvrfail:${ip}`, WINDOW_S);
       throw new CommandError("err.nvrKey", {}, 401);
@@ -40,14 +40,20 @@ export class NvrKeyGuard implements CanActivate {
   }
 
   private find(key: string): Institution | undefined {
-    const digest = sha256(key);
-    return this.store.db.institutions.find((i) => {
-      const n = i.settings.nvr;
-      if (!n?.enabled || !n.keyHash) return false;
-      const stored = Buffer.from(n.keyHash, "hex");
-      return stored.length === digest.length && timingSafeEqual(stored, digest);
-    });
+    return findNvrInstitution(this.store.db.institutions, key);
   }
+}
+
+/** "edn_..." kaliti egasi bo'lgan muassasa (yoqilgan integratsiya). */
+export function findNvrInstitution(institutions: Institution[], key: string): Institution | undefined {
+  if (!NVR_KEY_PATTERN.test(key)) return undefined;
+  const digest = sha256(key);
+  return institutions.find((i) => {
+    const n = i.settings.nvr;
+    if (!n?.enabled || !n.keyHash) return false;
+    const stored = Buffer.from(n.keyHash, "hex");
+    return stored.length === digest.length && timingSafeEqual(stored, digest);
+  });
 }
 
 const NvrInstitution = createParamDecorator((_: unknown, ctx: ExecutionContext) => ctx.switchToHttp().getRequest<{ nvrInstitution: Institution }>().nvrInstitution);

@@ -171,7 +171,7 @@ export default function LoginPage() {
             })}
           </ul>
         </div>
-        <div className="relative mt-10 pl-10 text-xs text-nav-ink/60">© 2026 EduNazorat</div>
+        <div className="relative mt-10 pl-10 text-xs text-nav-ink/60">© 2026 EduControl</div>
       </aside>
 
       <main className="flex flex-col px-5 pt-[max(env(safe-area-inset-top),20px)] pb-8 md:justify-center md:px-16">
@@ -236,7 +236,7 @@ export default function LoginPage() {
               {error && <p role="alert" className="mt-2 text-sm font-medium text-bad">{error}</p>}
               <button type="submit" disabled={busy} className={cx(btn.primary, "mt-5 h-12 w-full text-[15px]")}>{t("Kod olish")}</button>
 
-              {showDemo && <DemoAccounts busy={busy} onPick={quick} hint={app.mode === "local" ? t("Demo hisoblar (kod 1111)") : t("Demo hisoblar")} />}
+              {showDemo && <DemoAccounts busy={busy} onPick={quick} hint={app.mode === "local" ? t("Demo hisoblar (kod 111111)") : t("Demo hisoblar")} />}
             </form>
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); void verify(); }} noValidate>
@@ -244,15 +244,15 @@ export default function LoginPage() {
                 <ChevronLeft size={18} aria-hidden /> {t("Raqamni o'zgartirish")}
               </button>
               <h2 className="text-2xl font-bold tracking-tight">{t("SMS kod")}</h2>
-              <p className="mt-1.5 text-[15px] text-muted">{t("{phone} raqamiga 4 xonali kod yuborildi", { phone: fmt.phone(phone) })}</p>
+              <p className="mt-1.5 text-[15px] text-muted">{t("{phone} raqamiga 6 xonali kod yuborildi", { phone: fmt.phone(phone) })}</p>
               {devCode && <p className="mt-3 rounded-lg bg-warn/12 px-3 py-2 text-sm text-warn">{t("Demo rejim: SMS yuborilmaydi, kod {code}", { code: devCode })}</p>}
               <label className="sr-only" htmlFor="otp">{t("SMS kod")}</label>
-              <input id="otp" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={4} value={code}
+              <input id="otp" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6} value={code}
                 onChange={(e) => {
                   const v = e.target.value.replace(/\D/g, "").slice(0, 4);
                   setCode(v);
                   setError(null);
-                  if (v.length === 4) void verify(v);
+                  if (v.length === 6) void verify(v);
                 }}
                 className={cx(inputCls, "tabular mt-6 h-14 text-center text-2xl font-bold tracking-[0.6em]")} placeholder="····" />
               {error && <p role="alert" className="mt-2 text-sm font-medium text-bad">{error}</p>}

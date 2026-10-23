@@ -130,10 +130,47 @@ export const MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS files_student ON files (student_id) WHERE student_id IS NOT NULL`,
 ];
 
+/**
+ * Versiyali migratsiyalar: har biri BIR MARTA, tartib bilan, schema_migrations jadvaliga yoziladi.
+ * Yangi o'zgarish kerak bo'lsa — ro'yxat oxiriga yangi raqam bilan qo'shing; eskisini o'zgartirmang.
+ * Katta o'zgarishlar (ma'lumotni ko'chirish, ustun nomini almashtirish) shu yerga yoziladi:
+ * yuqoridagi MIGRATIONS esa faqat "IF NOT EXISTS" ko'rinishidagi asosiy tuzilma (har ishga tushishda xavfsiz).
+ */
+export interface Migration {
+  version: number;
+  name: string;
+  sql: string[];
+}
+
+export const VERSIONED: Migration[] = [
+  { version: 1, name: "asosiy tuzilma (MIGRATIONS)", sql: [] },
+];
+
 /** Bir nechta nusxa bir vaqtda ishga tushsa ham migratsiyalar navbat bilan (Postgres advisory lock). */
-export async function migrate(sql: Sql) {
+export async function migrate(sql: Sql, versioned: Migration[] = VERSIONED): Promise<number[]> {
+  const applied: number[] = [];
   await sql.tx(async (q) => {
     await q.query("SELECT pg_advisory_xact_lock(724000)");
     for (const m of MIGRATIONS) await q.query(m);
+    await q.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+       version integer PRIMARY KEY,
+       name text NOT NULL,
+       applied_at timestamptz NOT NULL DEFAULT now()
+     )`);
+    const done = new Set((await q.query<{ version: number }>("SELECT version FROM schema_migrations")).map((r) => Number(r.version)));
+    const sorted = [...versioned].sort((a, b) => a.version - b.version);
+    for (const m of sorted) {
+      if (done.has(m.version)) continue;
+      for (const stmt of m.sql) await q.query(stmt);
+      await q.query("INSERT INTO schema_migrations (version, name) VALUES ($1, $2)", [m.version, m.name]);
+      applied.push(m.version);
+    }
   });
+  return applied;
+}
+
+/** Bazadagi eng so'nggi migratsiya raqami (health va diagnostika uchun). */
+export async function schemaVersion(sql: Sql): Promise<number> {
+  const [r] = await sql.query<{ v: number | null }>("SELECT max(version) AS v FROM schema_migrations");
+  return Number(r?.v ?? 0);
 }

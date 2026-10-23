@@ -1,10 +1,10 @@
-// EduNazorat service worker: Web Push bildirishnomalari.
+// EduControl service worker: Web Push bildirishnomalari.
 // Ilova yopiq bo'lsa ham server yuborgan xabar telefonda/kompyuterda chiqadi.
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener("push", (event) => {
-  let data = { title: "EduNazorat", body: "", url: "/", tag: undefined };
+  let data = { title: "EduControl", body: "", url: "/", tag: undefined };
   try {
     data = { ...data, ...event.data.json() };
   } catch {

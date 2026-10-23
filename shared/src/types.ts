@@ -44,6 +44,17 @@ export interface InstitutionSettings {
   payments: PaymentProviderSettings;
   /** NVR integratsiyasi (ixtiyoriy). Kalitning o'zi saqlanmaydi, faqat SHA-256 xeshi. */
   nvr?: NvrSettings;
+  /** Z_AMS (maktab kamerasi dasturi) bilan bog'langan maktab. Z_AMS admin paneli ruxsat bergandagina ishlaydi. */
+  zams?: ZamsLink;
+}
+
+export interface ZamsLink {
+  /** Z_AMS admin serveridagi maktab raqami (birinchi muvaffaqiyatli ulanishda bog'lanadi). */
+  schoolId: number;
+  schoolName?: string;
+  linkedAt: number;
+  /** Oxirgi sinxronlash (ro'yxat yoki dars). */
+  lastSyncAt?: number;
 }
 
 export interface NvrSettings {
@@ -156,6 +167,16 @@ export interface Student {
   faceModel?: string;
   /** Ro'yxatga olishdagi kichik yuz kesimi (data URL). */
   facePhoto?: string;
+  /**
+   * Administrator yuklagan rasm (yuz kesimi, fayl havolasi). Ota-ona roziligidan oldin faqat rahbariyat ko'radi;
+   * rozilikdan keyin undan yuz namunasi tayyorlanadi.
+   */
+  photo?: string;
+  /** Ota-ona roziligi qachon va kim tomonidan berilgan. */
+  consentAt?: number;
+  consentBy?: string;
+  /** Tashqi tizimdagi ID ("zams:<maktab>:<o'quvchi>"). Bunday o'quvchining ismi va sinfi o'sha tizimdan keladi. */
+  externalId?: string;
 }
 
 /** Dars jadvalidagi bitta dars (har hafta takrorlanadi). */

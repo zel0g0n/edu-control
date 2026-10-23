@@ -13,7 +13,7 @@ const MAX_ATTEMPTS = 5;
 const hash = (phone: string, code: string) => createHash("sha256").update(`${phone}:${code}`).digest("hex");
 
 /**
- * Bir martalik SMS kod: 4 raqam, 5 daqiqa, 5 urinish, 60 soniyada bir marta.
+ * Bir martalik SMS kod: 6 raqam, 5 daqiqa, 5 urinish, 60 soniyada bir marta.
  * Kod (faqat xeshi) va xato urinishlar bazada: istalgan server nusxasida tekshiriladi.
  */
 @Injectable()
@@ -30,7 +30,7 @@ export class OtpService {
     if (!phone) throw new CommandError("err.phone", { phone: rawPhone }, 400);
     findLoginUser(this.store.db, phone);
     await this.blocked(phone);
-    const code = String(randomInt(0, 10000)).padStart(4, "0");
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     // 60 soniyada bir marta (bazada atomar: ikki nusxa bir vaqtda yubormaydi)
     const rows = await this.sql.query<{ phone: string }>(
       `INSERT INTO otp_codes (phone, hash, expires_at, attempts, sent_at) VALUES ($1, $2, now() + make_interval(secs => $3), 0, now())
@@ -43,7 +43,7 @@ export class OtpService {
       const [p] = await this.sql.query<{ wait: string | number }>("SELECT extract(epoch FROM (sent_at + make_interval(secs => $2) - now())) AS wait FROM otp_codes WHERE phone = $1", [phone, RESEND_S]);
       throw new CommandError("err.otpWait", { s: Math.max(1, Math.ceil(Number(p?.wait ?? RESEND_S))) }, 429);
     }
-    await this.sms.send(phone, `EduNazorat: kirish kodi ${code}. Kodni hech kimga bermang.`);
+    await this.sms.send(phone, `EduControl: kirish kodi ${code}. Kodni hech kimga bermang.`);
     return this.sms.devMode ? { devCode: code } : {};
   }
 
@@ -54,7 +54,7 @@ export class OtpService {
     const [p] = await this.sql.query<{ hash: string; attempts: number }>("SELECT hash, attempts FROM otp_codes WHERE phone = $1 AND expires_at > now()", [phone]);
     if (!p) throw new CommandError("err.otpExpired", {}, 401);
     const want = Buffer.from(p.hash);
-    const ok = /^\d{4}$/.test(code) && timingSafeEqual(want, Buffer.from(hash(phone, code)));
+    const ok = /^\d{6}$/.test(code) && timingSafeEqual(want, Buffer.from(hash(phone, code)));
     if (!ok) {
       // Raqam bo'yicha xato urinishlar (kod qayta so'ralsa ham saqlanadi): 15 daqiqada 10 ta → blok
       await this.limits.hit(`otpfail:${phone}`, 15 * 60);

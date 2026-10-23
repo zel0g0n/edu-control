@@ -18,7 +18,7 @@ import {
   type PaymentMethod,
 } from "./types";
 
-export const DEMO_OTP = "1111";
+export const DEMO_OTP = "111111";
 /** Demo foydalanuvchilarning paroli (faqat demo/sinov ma'lumotlari uchun). */
 export const DEMO_PASSWORD = "246810";
 

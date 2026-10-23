@@ -15,6 +15,7 @@ import { useApp } from "@/lib/data/store";
 import { faceWorker } from "@/lib/face/client";
 import { FACE, faceThresholds } from "@/lib/face/config";
 import { FaceGallery, qualityWeight, Tracker, usableTemplates, type Track } from "@/lib/face/matcher";
+import { enrollFromStoredPhotos } from "@/lib/face/photo";
 import { SceneScanner } from "@/lib/face/scanner";
 import { eyeDistance, yawRatio, type Detection } from "@/lib/face/yunet";
 import { fmt } from "@/lib/format";
@@ -182,6 +183,20 @@ export function CameraClient() {
 
   const [loadPct, setLoadPct] = useState<number | null>(null);
   useEffect(() => faceWorker.onProgress((p) => setLoadPct(Math.round(p * 100))), []);
+
+  // Rozilik berilgan, lekin namunasi yo'q o'quvchilar: administrator yuklagan rasmdan (model yuklangach)
+  useEffect(() => {
+    if (status !== "ready") return;
+    let alive = true;
+    void enrollFromStoredPhotos(app, students).then((ids) => {
+      if (!alive || !ids.length) return;
+      const fresh = students.map((s) => app.student(s.id) ?? s);
+      setGallery(new FaceGallery(Object.fromEntries(fresh.filter((s) => s.parentConsent).map((s) => [s.id, usableTemplates(s)])), thresholds));
+      toast(t("{n} ta o'quvchi namunasi rasmidan tayyorlandi", { n: ids.length }), "ok");
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   useEffect(() => {
     faceWorker.init().then(() => setStatus("ready")).catch((e: Error) => {

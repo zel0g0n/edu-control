@@ -38,7 +38,7 @@ test("API sarlavhalari, sxema tekshiruvi, imzosiz fayl", async () => {
   const health = await fetch(`${API}/health`);
   expect(health.headers.get("x-frame-options")).toBe("DENY");
   expect(health.headers.get("cache-control")).toBe("no-store");
-  expect(await health.json()).toEqual({ ok: true, push: false });
+  expect(await health.json()).toEqual({ ok: true, db: true, ready: true, push: false });
   const t = await apiLogin("908888888");
   const bad = await fetch(`${API}/commands/lead.save`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` }, body: JSON.stringify({ name: { $gt: "" }, phone: "1", interest: "", source: "x" }) });
   expect(bad.status).toBe(400);

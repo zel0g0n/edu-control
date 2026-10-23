@@ -61,6 +61,29 @@ ochilsa (masalan, super admin sifatida kirib `/director`), tizim **"Siz X sifati
 **Chiqib, boshqa hisob bilan kirish** (kirgach o'sha sahifaga qaytiladi) yoki o'z sahifasiga qaytish.
 Ikki hisobni yonma-yon sinash uchun ikkinchisini boshqa brauzerda yoki yashirin (inkognito) oynada oching.
 
+## O'quvchilarni fayldan qo'shish
+
+O'quvchilar → **Fayldan qo'shish**: Excel (.xlsx), CSV, Word (.docx, jadval yoki ro'yxat) yoki PDF.
+- Faqat formadagi ma'lumotlar olinadi: familiya va ism, sinf, tug'ilgan sana, ota-ona ismi va telefoni, o'quvchi telefoni. Boshqa ustunlar (manzil, izoh...) e'tiborsiz.
+- Ustunlar sarlavhasidan o'zi aniqlanadi (o'zbekcha/ruscha, lotin/kirill); xato bo'lsa har ustun ostidagi ro'yxatdan tuzatiladi. Sarlavhasiz ro'yxatda mazmuniga qarab.
+- Sinf "9-A", "9 a", "9А" kabi har xil yozilgan bo'lsa ham taniladi; faylda sinf bo'lmasa — hammasi tanlangan sinfga.
+- Qo'shishdan oldin jadval: **Tayyor**, **Izohli** (noto'g'ri telefon yoki sana tashlab yuboriladi), **Allaqachon bor** (shu sinfda shu ism — takrorlanmaydi), **Xato** (sinf topilmadi — qo'shilmaydi).
+- Aka-uka bolalarning ota-onasi (bir xil telefon) bitta profil bo'ladi. "Namuna fayl" tugmasi tayyor Excel shablonini beradi.
+- Fayl serverga yuborilmaydi: brauzerda o'qiladi.
+
+## O'quvchi rasmi
+
+O'quvchi qo'shish/tahrirlash oynasida **Rasm yuklash**: rasm tekshiriladi (bitta aniq yuz), saqlanadi faqat kichik yuz kesimi.
+- Ota-ona roziligi bor bo'lsa — kamera davomati uchun yuz namunasi darhol shu rasmdan olinadi.
+- Rozilik hali yo'q bo'lsa — faqat rasm saqlanadi (o'qituvchiga ko'rinmaydi). Ota-ona rozilik bergach, o'qituvchi kamerasi birinchi ochilganda namuna shu rasmdan avtomatik tayyorlanadi.
+
+## Ota-ona roziligi
+
+Ota-ona tizimga kirganda farzandi uchun rozilik hali berilmagan bo'lsa, **"Farzandingiz rasmidan foydalanishga rozilik"** oynasi chiqadi:
+nima saqlanadi, kim ko'radi, qayerda saqlanadi, qanday bekor qilinadi. "Roziman" — sahifa ochiladi; "Rozi emasman" — kira olmaydi (chiqadi).
+Ota-ona sozlamalarida rozilik tugmasi yo'q. Bekor qilish — maktab administratori orqali (o'quvchi sahifasi); shunda yuz namunasi va rasmlar o'chadi,
+ota-ona keyingi kirishda yana rozilik so'raladi.
+
 ## SMS bilan kirish (ixtiyoriy)
 
 Server Eskiz.uz ga ulangan bo'lsa (yoki sinov rejimida `SMS_DEV_MODE=true`), kirish sahifasida **"SMS kod"** yorlig'i paydo bo'ladi.

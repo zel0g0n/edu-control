@@ -26,6 +26,7 @@ const COMMANDS = new Set<string>([
   "announcement.send", "consent.set", "face.enroll", "student.save", "student.archive", "teacher.save", "teacher.setActive",
   "class.save", "class.delete", "lesson.save", "lesson.delete", "term.save", "settings.save", "institution.save", "institution.setActive",
   "nvr.configure", "admin.save", "admin.setActive", "lead.save", "lead.update", "lead.convert", "lead.delete",
+  "student.import", "student.photo",
   // "payment.demoOnline" serverda yo'q: haqiqiy to'lov faqat Click/Payme orqali.
 ] satisfies CommandName[]);
 
@@ -62,10 +63,22 @@ export class AppController {
     @Inject(SnapshotsService) private readonly snapshots: SnapshotsService,
   ) {}
 
+  /**
+   * Monitoring uchun: baza javob beradimi va ma'lumot yuklanganmi. Biror narsa ishlamasa — 503
+   * (tools/ops/monitor.sh va .github/workflows/uptime.yml shuni tekshiradi). Ichki ma'lumot oshkor qilinmaydi.
+   */
   @Get("health")
-  health() {
-    // Ichki ma'lumot (foydalanuvchilar soni va h.k.) oshkor qilinmaydi
-    return { ok: true, push: this.push.enabled };
+  async health(@Res({ passthrough: true }) res: Response) {
+    let db = false;
+    try {
+      await Promise.race([this.sql.query("SELECT 1"), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 3000))]);
+      db = true;
+    } catch {
+      db = false;
+    }
+    const ok = db && this.store.loaded;
+    if (!ok) res.status(503);
+    return { ok, db, ready: this.store.loaded, push: this.push.enabled };
   }
 
   // ------------------------------------------------------------ kirish
@@ -356,7 +369,7 @@ export class AppController {
     if (typeof input !== "object" || input === null) throw new CommandError("err.required", { field: "body" }, 400);
     // Rasmlar (yuz kesimi, namuna surati) yozuv ichida emas — fayl sifatida
     const bytes = name === "attendance.mark" ? await this.snapshots.extract(u.id, (input as { marks?: unknown }).marks)
-      : name === "face.enroll" ? await this.snapshots.extractPhoto(u.id, input as { studentId?: unknown; photo?: unknown }) : 0;
+      : name === "face.enroll" || name === "student.photo" ? await this.snapshots.extractPhoto(u.id, input as { studentId?: unknown; photo?: unknown }) : 0;
     if (bytes) await this.limits.upload(u.id, bytes);
     const patch = await this.store.run(u, name as CommandName, input as CommandMap[CommandName]);
     const inp = input as { id?: unknown; institutionId?: unknown };
